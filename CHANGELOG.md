@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.7] - 2025-02-18
+-  Dependabot Pip: Bump rich from 13.8.0 to 13.9.4 (#56)
+-  Dependabot Pip: Bump charset-normalizer from 3.3.2 to 3.4.0 (#54)
+-  Dependabot Pip: Bump urllib3 from 2.2.2 to 2.2.3 (#51) 
+-  Dependabot Pip: Bump idna from 3.8 to 3.10 (#52) 
+
 ## [1.0.6] - 2024-09-4
 - Fixes #7 added the `--force` parameter
 - Dependabot Pip: Bump pygments from 2.17.2 to 2.18.0 (#45)
