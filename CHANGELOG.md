@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.9] - 2025-03-14
+## [1.0.10] - 2025-03-14
 -  Testing nonroot, vs sha due to incompatiblity CPU #62
 
 ## [1.0.9] - 2025-03-14
