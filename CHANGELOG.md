@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.9] - 2025-03-14
+-  Use distroless for docker to reduce vulnerabilities #61 
+
 ## [1.0.8] - 2025-03-05
 -  Dependabot Pip: Bump charset-normalizer from 3.4.0 to 3.4.1 #60 
 -  Dependabot Pip: Bump certifi from 2024.8.30 to 2025.1.31 #59 
