@@ -25,8 +25,8 @@ job:
       {{- with secret "development-eu-west-1/tools/secret/automerge/config" -}}
       {{ .Data.data | toJSON  }}
       {{- end }}
-  args: ["python", "main.py", "--config", "/vault/secrets/config.json"]
-  # args: ["python", "main.py", "--config", "/app/config/config.json"]
+  args: ["--config", "/vault/secrets/config.json"]
+  # args: ["--config", "/app/config/config.json"]
   resources:
     requests:
       memory: "64Mi"

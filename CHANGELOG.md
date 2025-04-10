@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.11] - 2025-04-10
+-  Dependabot Pip: Bump rich from 13.9.4 to 14.0.0 #63
+-  Updated `values.yaml`
+
 ## [1.0.10] - 2025-03-14
 -  Testing nonroot, vs sha due to incompatiblity CPU #62
 
