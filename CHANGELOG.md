@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 -  Updated `values.yaml`
 
 ## [1.0.10] - 2025-03-14
--  Testing nonroot, vs sha due to incompatiblity CPU #62
+-  Testing nonroot, vs sha due to incompatibility CPU #62
 
 ## [1.0.9] - 2025-03-14
 -  Use distroless for docker to reduce vulnerabilities #61
@@ -80,4 +80,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependabot Pip: Bump rich from 13.5.2 to 13.5.3 (#9)
 
 ## [0.1.0] - 2023-09-14
-- Fist version, initial commit
+- First version, initial commit

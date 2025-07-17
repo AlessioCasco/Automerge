@@ -19,7 +19,7 @@ class TestGetPullRequests(unittest.TestCase):
 
     @patch("requests.get")
     def test_get_pull_requests_regex(self, mock_get):
-        # Mock the Github API calls
+        # Mock the GitHub API calls
         mock_get.side_effect = [
             # terraform-a
             MockResponse([

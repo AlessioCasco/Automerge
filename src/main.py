@@ -14,7 +14,7 @@ def main():
         # Init parser for the arguments
         parser = argparse.ArgumentParser(
             prog="Automerge",
-            description="Github PR auto-merger",
+            description="GitHub PR auto-merger",
             epilog="Thanks for flying automerge")
         parser.add_argument(
             "--config_file",
