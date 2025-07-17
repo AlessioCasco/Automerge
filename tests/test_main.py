@@ -2,13 +2,20 @@ import unittest
 import json
 from unittest.mock import patch
 from unittest.mock import call
-from src.main import get_pull_requests
+import sys
+import os
+
+# Add src directory to path so we can import the modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from github_client import GitHubClient
 
 class TestGetPullRequests(unittest.TestCase):
     def setUp(self):
         self.base_repos_url = "https://api.github.com/repos/owner/"
         self.repos = ["terraform-a", "terraform-b", "terraform-c", "terraform-d"]
         self.access_token = "my_access_token"
+        self.github_client = GitHubClient(self.access_token, "owner", "test_user")
 
     @patch("requests.get")
     def test_get_pull_requests_regex(self, mock_get):
@@ -46,7 +53,7 @@ class TestGetPullRequests(unittest.TestCase):
 
         # Call the function and check the results
         filters = ["^\\[DEPENDENCIES\\] Update Terraform", "^\\[Dependabot\\]"]
-        pull_requests = get_pull_requests(self.base_repos_url, self.repos, {"Authorization": f"Bearer {self.access_token}"}, filters)
+        pull_requests = self.github_client.get_pull_requests(self.repos, filters)
         self.assertEqual(len(pull_requests), 7)
 
         values_list = [d["title"] for d in pull_requests]
@@ -65,10 +72,10 @@ class TestGetPullRequests(unittest.TestCase):
 
         # Check that the requests.get function was called with the correct arguments
         mock_get.assert_has_calls([
-            call("https://api.github.com/repos/owner/terraform-a/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token"}, timeout=10),
-            call("https://api.github.com/repos/owner/terraform-b/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token"}, timeout=10),
-            call("https://api.github.com/repos/owner/terraform-c/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token"}, timeout=10),
-            call("https://api.github.com/repos/owner/terraform-d/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token"}, timeout=10)
+            call("https://api.github.com/repos/owner/terraform-a/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}, timeout=10),
+            call("https://api.github.com/repos/owner/terraform-b/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}, timeout=10),
+            call("https://api.github.com/repos/owner/terraform-c/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}, timeout=10),
+            call("https://api.github.com/repos/owner/terraform-d/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}, timeout=10)
         ])
 
 class MockResponse:
