@@ -10,34 +10,17 @@ from rich.console import Console
 
 from utils import (
     DEFAULT_TIMEOUT,
-    MERGEABLE_STATE_TIMEOUT,
-    COMMENT_DELAY,
     GITHUB_API_VERSION,
     GITHUB_ACCEPT_HEADER,
-    MERGEABLE_STATE_UNKNOWN,
-    MERGEABLE_STATE_BEHIND,
-    MERGEABLE_STATE_BLOCKED,
-    MERGEABLE_STATE_CLEAN,
-    MERGEABLE_STATE_DIRTY,
-    REVIEW_STATE_APPROVED,
-    REVIEW_STATE_DISMISSED,
-    LABEL_AUTOMERGE_DISMISSED,
-    MERGE_METHOD_SQUASH,
-    format_api_error,
-    is_mergeable_state_final,
-    should_update_branch,
-    is_clean_state,
-    is_blocked_state,
-    is_dirty_state,
 )
 
 
 class GitHubClient:
     """Client for interacting with GitHub API."""
-    
+
     def __init__(self, access_token: str, owner: str, github_user: str):
         """Initialize GitHub client.
-        
+
         Args:
             access_token: GitHub access token
             owner: Repository owner
@@ -56,14 +39,14 @@ class GitHubClient:
 
     def get_pull_requests(self, repos: List[str], filters: List[str]) -> List[Dict[str, Any]]:
         """Get all pull requests that match the filter in the title.
-        
+
         Args:
             repos: List of repositories to check
             filters: Regex patterns used to filter pull request titles
-            
+
         Returns:
             List of pull requests that match the filters
-            
+
         Raises:
             SystemExit: If no filters provided or API call fails
         """
@@ -98,10 +81,10 @@ class GitHubClient:
 
     def update_branch(self, pull_req_list: List[Dict[str, Any]]) -> None:
         """Update a branch.
-        
+
         Args:
             pull_req_list: List of pull requests to update
-            
+
         Raises:
             SystemExit: If API call fails
         """
@@ -117,10 +100,10 @@ class GitHubClient:
 
     def get_last_comment(self, pull_req_url: str) -> Optional[Dict[str, Any]]:
         """Get the last comment from a given pull request.
-        
+
         Args:
             pull_req_url: URL of the pull request
-            
+
         Returns:
             The last comment from the pull request or None if no comments
         """
@@ -129,7 +112,7 @@ class GitHubClient:
         if response.status_code != 200:
             return None
         comments = json.loads(response.text)
-        
+
         # Handle pagination using headers
         if "Link" in response.headers:
             links = response.headers["Link"].split(", ")
@@ -141,17 +124,17 @@ class GitHubClient:
                         last_page_comments = json.loads(last_page_response.text)
                         if last_page_comments:
                             return last_page_comments[-1]
-        
+
         if comments:
             return comments[-1]
         return None
 
     def get_mergeable_state(self, url: str) -> str:
         """Get the mergeable state of the PR.
-        
+
         Args:
             url: URL to use for the API call
-            
+
         Returns:
             Mergeable state of the pull request
         """
@@ -163,10 +146,10 @@ class GitHubClient:
 
     def is_approved(self, url: str) -> Optional[Union[bool, str]]:
         """Check if PR is approved already.
-        
+
         Args:
             url: URL to use for the API call
-            
+
         Returns:
             True if approved, False if not approved, None if no review found, "Dismissed" if dismissed
         """
@@ -188,10 +171,10 @@ class GitHubClient:
 
     def approve(self, url: str) -> None:
         """Approve a pull request.
-        
+
         Args:
             url: URL to use for the API call
-            
+
         Raises:
             SystemExit: If API call fails
         """
@@ -215,7 +198,7 @@ class GitHubClient:
         update: bool = True,
     ) -> None:
         """Write a comment in the PR.
-        
+
         Args:
             pull_req: List of pull requests to comment on
             comment: Comment string to write
@@ -281,7 +264,7 @@ class GitHubClient:
 
     def multi_comments_pull_req(self, pull_req: List[Dict[str, Any]], comment1: str, comment2: str) -> None:
         """Append two comments to the PR.
-        
+
         Args:
             pull_req: List of pull requests to comment on
             comment1: First comment string to append
@@ -293,7 +276,7 @@ class GitHubClient:
 
     def set_label_to_pull_request(self, pull_req: List[Dict[str, Any]], label: str) -> None:
         """Set a label to a PR.
-        
+
         Args:
             pull_req: List of pull requests to label
             label: Label to set
@@ -316,7 +299,7 @@ class GitHubClient:
 
     def close_pull_requests(self, pull_req_list: List[Dict[str, Any]]) -> None:
         """Close the specified pull requests.
-        
+
         Args:
             pull_req_list: List of pull requests to be closed
         """
@@ -336,10 +319,10 @@ class GitHubClient:
 
     def merge_pull_req(self, pull_req: List[Dict[str, Any]]) -> None:
         """Merge pull requests.
-        
+
         Args:
             pull_req: List of pull requests to merge
-            
+
         Raises:
             SystemExit: If merge operation fails
         """
@@ -372,10 +355,6 @@ class GitHubClient:
             if not self.is_approved(pr["url"]):
                 print(f"PR {pr['number']} Needs approving...")
                 self.approve(pr["url"])
-            elif self.is_approved(pr["url"]) == "Dismissed":
-                print(f"PR {pr['number']} Dismissed, check why ignoring...")
-                self.set_label_to_pull_request([pr], "automerge_dismissed")
-                continue
             else:
                 print(f"PR {pr['number']} Approved already")
 
@@ -409,9 +388,40 @@ class GitHubClient:
 
             print(f"PR {pr['number']} merged!")
 
+    def process_dismissed_prs(self, dismissed_prs: List[Dict[str, Any]]) -> None:
+        """Process dismissed PRs by re-approving them and checking if they can be merged.
+
+        Args:
+            dismissed_prs: List of dismissed pull requests to process
+        """
+        for pr in dismissed_prs:
+            print(f"\n*** Processing dismissed PR {pr['number']} ***\n")
+
+            # Re-approve the PR
+            print(f"PR {pr['number']} was dismissed, re-approving...")
+            self.approve(pr["url"])
+
+            # Check if it has no changes and can be merged
+            last_comment = self.get_last_comment(pr["issue_url"])
+            if last_comment:
+                # If last_comment is a list, get the last one
+                if isinstance(last_comment, list):
+                    last_comment = last_comment[-1] if last_comment else None
+
+            if last_comment and "body" in last_comment:
+                no_changes_pattern = re.compile(
+                    r"No changes. Your infrastructure matches the configuration|Apply complete!")
+                if no_changes_pattern.search(last_comment["body"]):
+                    print(f"PR {pr['number']} has no changes after re-approval, merging...")
+                    self.merge_pull_req([pr])
+                else:
+                    print(f"PR {pr['number']} still has changes after re-approval, will be processed in next run.")
+            else:
+                print(f"PR {pr['number']} has no comments after re-approval, will be processed in next run.")
+
     def approve_all_prs(self, all_pulls: List[Dict[str, Any]]) -> None:
         """Approve all not approved PRs matching the filters from the config.
-        
+
         Args:
             all_pulls: List of all pull requests to check
         """
@@ -424,4 +434,4 @@ class GitHubClient:
         if approved:
             print("All completed")
         else:
-            print("Nothing to be approved") 
+            print("Nothing to be approved")

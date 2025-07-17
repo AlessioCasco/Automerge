@@ -5,3 +5,8 @@ fault-injection.iml
 Logs/
 lib64
 myenv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class

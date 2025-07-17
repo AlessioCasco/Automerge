@@ -41,10 +41,10 @@ MERGE_METHOD_SQUASH = "squash"
 
 def format_pr_info(pr: dict) -> str:
     """Format PR information for logging.
-    
+
     Args:
         pr: Pull request dictionary
-        
+
     Returns:
         Formatted string with PR information
     """
@@ -53,11 +53,11 @@ def format_pr_info(pr: dict) -> str:
 
 def format_api_error(status_code: int, response_text: str) -> str:
     """Format API error message.
-    
+
     Args:
         status_code: HTTP status code
         response_text: Response text from API
-        
+
     Returns:
         Formatted error message
     """
@@ -66,10 +66,10 @@ def format_api_error(status_code: int, response_text: str) -> str:
 
 def is_mergeable_state_final(state: str) -> bool:
     """Check if mergeable state is final (not unknown).
-    
+
     Args:
         state: Mergeable state string
-        
+
     Returns:
         True if state is final, False otherwise
     """
@@ -78,10 +78,10 @@ def is_mergeable_state_final(state: str) -> bool:
 
 def should_update_branch(state: str) -> bool:
     """Check if branch should be updated based on mergeable state.
-    
+
     Args:
         state: Mergeable state string
-        
+
     Returns:
         True if branch should be updated, False otherwise
     """
@@ -90,10 +90,10 @@ def should_update_branch(state: str) -> bool:
 
 def is_clean_state(state: str) -> bool:
     """Check if mergeable state is clean.
-    
+
     Args:
         state: Mergeable state string
-        
+
     Returns:
         True if state is clean, False otherwise
     """
@@ -102,10 +102,10 @@ def is_clean_state(state: str) -> bool:
 
 def is_blocked_state(state: str) -> bool:
     """Check if mergeable state is blocked.
-    
+
     Args:
         state: Mergeable state string
-        
+
     Returns:
         True if state is blocked, False otherwise
     """
@@ -114,11 +114,11 @@ def is_blocked_state(state: str) -> bool:
 
 def is_dirty_state(state: str) -> bool:
     """Check if mergeable state is dirty.
-    
+
     Args:
         state: Mergeable state string
-        
+
     Returns:
         True if state is dirty, False otherwise
     """
-    return state == MERGEABLE_STATE_DIRTY 
+    return state == MERGEABLE_STATE_DIRTY

@@ -1,14 +1,14 @@
 import unittest
 import json
-from unittest.mock import patch
-from unittest.mock import call
 import sys
 import os
+from unittest.mock import patch
+from unittest.mock import call
 
 # Add src directory to path so we can import the modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from github_client import GitHubClient
+from github_client import GitHubClient  # noqa: E402
 
 class TestGetPullRequests(unittest.TestCase):
     def setUp(self):

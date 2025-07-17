@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import re
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Dict, List, Any, Tuple
 
 from github_client import GitHubClient
 from utils import (
@@ -19,15 +19,15 @@ from utils import (
 
 class PRProcessor:
     """Handles PR processing and categorization logic."""
-    
+
     def __init__(self, github_client: GitHubClient):
         """Initialize PR processor.
-        
+
         Args:
             github_client: GitHub client instance
         """
         self.github_client = github_client
-        
+
         # Compile regex patterns for efficiency
         self.regexp_pr_diff = re.compile(
             r"Plan: [0-9]* to add, [0-9]* to change, [0-9]* to destroy.|Changes to Outputs")
@@ -41,24 +41,32 @@ class PRProcessor:
         self.regexp_pr_no_project = re.compile(r"Ran Plan for 0 projects")
         self.regexp_new_version = re.compile(r"A newer version of")
 
-    def create_pr_lists(self, all_pull_req: List[Dict[str, Any]], force: bool) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    def create_pr_lists(self, all_pull_req: List[Dict[str, Any]], force: bool) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """Categorize pull requests into different lists based on their state.
-        
+
         Args:
             all_pull_req: List of all pull requests to process
             force: Whether to force planning of all PRs
-            
+
         Returns:
-            Tuple of (no_comments, with_diffs, no_changes, error, to_be_closed) lists
+            Tuple of (no_comments, with_diffs, no_changes, error, to_be_closed, dismissed) lists
         """
         list_no_comments = []
         list_with_diffs = []
         list_no_changes = []
         list_error = []
         list_to_be_closed = []
+        list_dismissed = []
 
         for pull_req in all_pull_req:
             last_comment = self.github_client.get_last_comment(pull_req["issue_url"])
+
+            # Check if PR is dismissed and should be re-approved
+            approval_status = self.github_client.is_approved(pull_req["url"])
+            if approval_status == "Dismissed":
+                list_dismissed.append(pull_req)
+                print(f"{format_pr_info(pull_req)}: Dismissed, will re-approve and check for merging.")
+                continue
 
             if not last_comment:
                 list_no_comments.append(pull_req)
@@ -106,21 +114,25 @@ class PRProcessor:
 
                 print(f"{format_pr_info(pull_req)}: *** Not match, please check why!!!***")
 
-        return (list_no_comments, list_with_diffs, list_no_changes, list_error, list_to_be_closed)
+        return (list_no_comments, list_with_diffs, list_no_changes, list_error, list_to_be_closed, list_dismissed)
 
     def process_prs(self, all_pulls: List[Dict[str, Any]], force: bool) -> None:
         """Process all pull requests based on their categorization.
-        
+
         Args:
             all_pulls: List of all pull requests to process
             force: Whether to force planning of all PRs
         """
-        pr_list_no_comments, pr_with_diffs, pr_list_no_changes, pr_list_error, list_to_be_closed = self.create_pr_lists(
+        pr_list_no_comments, pr_with_diffs, pr_list_no_changes, pr_list_error, list_to_be_closed, list_dismissed = self.create_pr_lists(
             all_pulls, force)
 
         if pr_list_no_changes:
             print("\nMerging what's possible\n")
             self.github_client.merge_pull_req(pr_list_no_changes)
+
+        if list_dismissed:
+            print("\nProcessing dismissed PRs - re-approving and checking for merging\n")
+            self.github_client.process_dismissed_prs(list_dismissed)
 
         if pr_with_diffs:
             print("\nUnlocking PR\n")
@@ -141,4 +153,4 @@ class PRProcessor:
         if list_to_be_closed:
             print("\nClosing old PRs\n")
             self.github_client.multi_comments_pull_req(list_to_be_closed, COMMENT_CLOSE_NEW_VERSION, COMMENT_ATLANTIS_UNLOCK)
-            self.github_client.close_pull_requests(list_to_be_closed) 
+            self.github_client.close_pull_requests(list_to_be_closed)
