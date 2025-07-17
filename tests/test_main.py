@@ -72,10 +72,10 @@ class TestGetPullRequests(unittest.TestCase):
 
         # Check that the requests.get function was called with the correct arguments
         mock_get.assert_has_calls([
-            call("https://api.github.com/repos/owner/terraform-a/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}, timeout=10),
-            call("https://api.github.com/repos/owner/terraform-b/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}, timeout=10),
-            call("https://api.github.com/repos/owner/terraform-c/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}, timeout=10),
-            call("https://api.github.com/repos/owner/terraform-d/pulls?per_page=100", headers={"Authorization": "Bearer my_access_token", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}, timeout=10)
+            call("https://api.github.com/repos/owner/terraform-a/pulls?per_page=100", headers=self.github_client.headers, timeout=10),
+            call("https://api.github.com/repos/owner/terraform-b/pulls?per_page=100", headers=self.github_client.headers, timeout=10),
+            call("https://api.github.com/repos/owner/terraform-c/pulls?per_page=100", headers=self.github_client.headers, timeout=10),
+            call("https://api.github.com/repos/owner/terraform-d/pulls?per_page=100", headers=self.github_client.headers, timeout=10)
         ])
 
 class MockResponse:
