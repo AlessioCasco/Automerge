@@ -26,7 +26,7 @@ REVIEW_STATE_DISMISSED = "DISMISSED"
 LABEL_AUTOMERGE_IGNORE = "automerge_ignore"
 LABEL_AUTOMERGE_NO_PROJECT = "automerge_no_project"
 LABEL_AUTOMERGE_DISMISSED = "automerge_dismissed"
-LABEL_AUTOMERGE_CONFLICT = "automerge_conflic"
+LABEL_AUTOMERGE_CONFLICT = "automerge_conflict"
 
 # Comments
 COMMENT_ATLANTIS_PLAN = "atlantis plan"
