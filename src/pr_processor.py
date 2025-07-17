@@ -30,7 +30,7 @@ class PRProcessor:
 
         # Compile regex patterns for efficiency
         self.regexp_pr_diff = re.compile(
-            r"Plan: [0-9]* to add, [0-9]* to change, [0-9]* to destroy.|Changes to Outputs")
+            r"Plan: [0-9]* to add, [0-9]* to change, [0-9]* to destroy\.|Changes to Outputs")
         self.regexp_pr_no_changes = re.compile(
             r"No changes. Your infrastructure matches the configuration|Apply complete!")
         self.regexp_pr_ignore = re.compile(
