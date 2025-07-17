@@ -14,6 +14,7 @@ from utils import (
     COMMENT_CLOSE_NEW_VERSION,
     COMMENT_NO_PROJECT,
     format_pr_info,
+    REVIEW_STATE_DISMISSED,
 )
 
 
@@ -63,7 +64,7 @@ class PRProcessor:
 
             # Check if PR is dismissed and should be re-approved
             approval_status = self.github_client.is_approved(pull_req["url"])
-            if approval_status == "Dismissed":
+            if approval_status == REVIEW_STATE_DISMISSED:
                 list_dismissed.append(pull_req)
                 print(f"{format_pr_info(pull_req)}: Dismissed, will re-approve and check for merging.")
                 continue
