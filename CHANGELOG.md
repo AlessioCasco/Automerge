@@ -7,14 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.12] - 2025-07-17
-- Split code into modules
-- Handle dismissed PRs + tests
-- Fix some typos around
-
-## [1.0.11] - 2025-04-10
+## [1.0.11] - 2025-07-17
 -  Dependabot Pip: Bump rich from 13.9.4 to 14.0.0 #63
 -  Updated `values.yaml`
+-  Split code into modules + handle dismissed PRs #71
+-  Dependabot Pip: Bump certifi from 2025.1.31 to 2025.7.14 #70
+-  Dependabot Pip: Bump urllib3 from 2.3.0 to 2.5.0 #69
+-  Dependabot Pip: Bump requests from 2.32.3 to 2.32.4 #67
+-  Dependabot Pip: Bump charset-normalizer from 3.4.1 to 3.4.2 #66
 
 ## [1.0.10] - 2025-03-14
 -  Testing nonroot, vs sha due to incompatibility CPU #62
