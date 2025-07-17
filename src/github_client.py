@@ -10,6 +10,7 @@ from rich.console import Console
 
 from utils import (
     DEFAULT_TIMEOUT,
+    MERGEABLE_STATE_TIMEOUT,
     GITHUB_API_VERSION,
     GITHUB_ACCEPT_HEADER,
 )
@@ -138,7 +139,7 @@ class GitHubClient:
         Returns:
             Mergeable state of the pull request
         """
-        response = requests.get(url, headers=self.headers, timeout=10)
+        response = requests.get(url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
         if response.status_code != 200:
             print(
                 f"Failed to get info for pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
@@ -153,7 +154,7 @@ class GitHubClient:
         Returns:
             True if approved, False if not approved, None if no review found, "Dismissed" if dismissed
         """
-        response = requests.get(url + "/reviews", headers=self.headers, timeout=10)
+        response = requests.get(url + "/reviews", headers=self.headers, timeout=DEFAULT_TIMEOUT)
         if response.status_code != 200:
             print(
                 f"Failed to get check if pull request is approved \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
@@ -182,7 +183,7 @@ class GitHubClient:
             url + "/reviews",
             headers=self.headers,
             json={"event": "APPROVE"},
-            timeout=10,
+            timeout=DEFAULT_TIMEOUT,
         )
 
         if response.status_code != 200:
@@ -217,7 +218,7 @@ class GitHubClient:
                 print(f"\n*** PR {pr['number']} ***\n")
 
                 # Setting a timer for the mergeable state
-                timeout = time.time() + 60 * 4  # 4 min should be enough
+                timeout = time.time() + MERGEABLE_STATE_TIMEOUT
                 with self.console.status("[bold green]Waiting for mergeable state to return..."):
                     while mergeable_state == "unknown":
                         mergeable_state = self.get_mergeable_state(pr["url"])
@@ -255,7 +256,7 @@ class GitHubClient:
                 pr_url_4_comments,
                 json=comment_data,
                 headers=self.headers,
-                timeout=10)
+                timeout=DEFAULT_TIMEOUT)
             if response.status_code != 201:
                 print(
                     f"Failed to add comment to pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
@@ -288,7 +289,7 @@ class GitHubClient:
                 label_url,
                 json=[label],
                 headers=self.headers,
-                timeout=10,
+                timeout=DEFAULT_TIMEOUT,
             )
 
             if response.status_code != 200:
@@ -310,7 +311,7 @@ class GitHubClient:
                 url,
                 headers=self.headers,
                 json={"state": "closed"},
-                timeout=10,
+                timeout=DEFAULT_TIMEOUT,
             )
             if response.status_code != 200:
                 print(f"Failed to close PR: {pull_req['title']}")
@@ -333,7 +334,7 @@ class GitHubClient:
             print(f"\n*** PR {pr['number']} ***\n")
 
             # Setting a timer for the mergeable state
-            timeout = time.time() + 60 * 4  # 4 min should be enough
+            timeout = time.time() + MERGEABLE_STATE_TIMEOUT
             with self.console.status("[bold green]Waiting for mergeable state to return..."):
                 while mergeable_state == "unknown":
                     mergeable_state = self.get_mergeable_state(pr["url"])
@@ -358,7 +359,7 @@ class GitHubClient:
             else:
                 print(f"PR {pr['number']} Approved already")
 
-            timeout = time.time() + 60 * 4  # 4 min should be enough
+            timeout = time.time() + MERGEABLE_STATE_TIMEOUT
             with self.console.status("[bold green]Waiting for checks to pass..."):
                 while mergeable_state != "clean":
                     mergeable_state = self.get_mergeable_state(pr["url"])
@@ -378,7 +379,7 @@ class GitHubClient:
                 pr["url"] + "/merge",
                 headers=self.headers,
                 json={"merge_method": "squash"},
-                timeout=10,
+                timeout=DEFAULT_TIMEOUT,
             )
 
             if response.status_code != 200:
