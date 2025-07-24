@@ -178,7 +178,7 @@ tests/
 ├── test_config.py          # Configuration loading and validation tests
 ├── test_github_client.py   # GitHub API interaction tests
 ├── test_pr_processor.py    # Pull request processing logic tests
-├── test_utils.py           # Utility function tests  
+├── test_utils.py           # Utility function tests
 ├── test_main.py            # Main application tests
 ├── test_dismissed_prs.py   # Dismissed PR handling tests
 └── test_conf.py            # Test utilities and mock objects
