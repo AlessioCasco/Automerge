@@ -1,4 +1,4 @@
-[tool.ruff]
+[tool.ruff.lint]
 # Select everything
 select = ["E", "F", "Q", "W"]
 
