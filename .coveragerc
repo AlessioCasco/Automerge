@@ -1,0 +1,41 @@
+[run]
+source = src
+relative_files = true
+omit =
+    tests/*
+    .venv/*
+    venv/*
+    */site-packages/*
+    */dist-packages/*
+    */__pycache__/*
+    */migrations/*
+    */settings/*
+    manage.py
+    setup.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+    class .*\bProtocol\):
+    @(abc\.)?abstractmethod
+
+show_missing = True
+skip_covered = False
+precision = 2
+
+[html]
+directory = htmlcov
+title = Automerge Coverage Report
+
+[xml]
+output = coverage.xml
+
+[json]
+output = coverage.json
