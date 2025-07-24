@@ -143,6 +143,32 @@ The project uses GitHub Actions for CI/CD with:
 
 Coverage reports are automatically generated and commented on pull requests, helping maintain code quality standards.
 
+### Coverage Configuration
+
+The project uses a `.coveragerc` file to configure coverage reporting:
+
+```ini
+[run]
+source = src
+relative_files = true
+omit = tests/*, .venv/*, venv/*, */site-packages/*
+
+[report]
+show_missing = True
+precision = 2
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml
+```
+
+Key settings:
+- **`relative_files = true`**: Required for GitHub Actions integration
+- **`source = src`**: Only measure coverage for source code
+- **`omit`**: Exclude test files and virtual environments
+
 ### Test File Organization
 
 The test suite is organized in the `tests/` directory with the following structure:
@@ -152,7 +178,7 @@ tests/
 ├── test_config.py          # Configuration loading and validation tests
 ├── test_github_client.py   # GitHub API interaction tests
 ├── test_pr_processor.py    # Pull request processing logic tests
-├── test_utils.py           # Utility function tests
+├── test_utils.py           # Utility function tests  
 ├── test_main.py            # Main application tests
 ├── test_dismissed_prs.py   # Dismissed PR handling tests
 └── test_conf.py            # Test utilities and mock objects
