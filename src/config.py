@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Union
 
 
 def read_config(config_file: str) -> Dict[str, Any]:
@@ -27,7 +27,7 @@ def read_config(config_file: str) -> Dict[str, Any]:
         raise OSError(msg) from exc
 
 
-def use_config(config: Dict[str, Any], key: str) -> Any:
+def use_config(config: Dict[str, Any], key: str) -> Union[str, list, dict]:
     """Extract a key from the configuration.
 
     Args:
@@ -45,7 +45,7 @@ def use_config(config: Dict[str, Any], key: str) -> Any:
 
     except KeyError:
         print(f'Error reading key "{key}" from config')
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
 
 def validate_config(config: Dict[str, Any]) -> None:
@@ -55,9 +55,11 @@ def validate_config(config: Dict[str, Any]) -> None:
         config: Configuration dictionary to validate
 
     Raises:
-        ValueError: If configuration is invalid
+        ValueError: If configuration is invalid or required keys are missing
+        TypeError: If configuration values have incorrect types
     """
-    required_keys = ["access_token", "owner", "github_user", "repos", "filters"]
+    required_keys = ["access_token", "owner",
+                     "github_user", "repos", "filters"]
 
     for key in required_keys:
         if key not in config:
@@ -79,14 +81,16 @@ def validate_config(config: Dict[str, Any]) -> None:
         raise ValueError("filters must be a non-empty list")
 
     # Validate that all repos are strings
-    for repo in config["repos"]:
-        if not isinstance(repo, str):
-            raise ValueError(f"All repos must be strings, found: {type(repo)}")
+    for i, repo in enumerate(config["repos"]):
+        if not isinstance(repo, str) or not repo.strip():
+            repo_type = type(repo).__name__
+            raise ValueError(f"Repository at index {i} must be a non-empty string, found: {repo_type}")
 
     # Validate that all filters are strings
-    for filter_pattern in config["filters"]:
-        if not isinstance(filter_pattern, str):
-            raise ValueError(f"All filters must be strings, found: {type(filter_pattern)}")
+    for i, filter_pattern in enumerate(config["filters"]):
+        if not isinstance(filter_pattern, str) or not filter_pattern.strip():
+            filter_type = type(filter_pattern).__name__
+            raise ValueError(f"Filter at index {i} must be a non-empty string, found: {filter_type}")
 
 
 def load_and_validate_config(config_file: str) -> Dict[str, Any]:

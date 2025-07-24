@@ -2,10 +2,10 @@
 
 """Automerge package for GitHub PR automation."""
 
-from github_client import GitHubClient
-from pr_processor import PRProcessor
-from config import load_and_validate_config, read_config, use_config, validate_config
-from utils import (
+from .github_client import GitHubClient
+from .pr_processor import PRProcessor
+from .config import load_and_validate_config, read_config, use_config, validate_config
+from .utils import (
     DEFAULT_TIMEOUT,
     MERGEABLE_STATE_TIMEOUT,
     COMMENT_DELAY,
@@ -37,7 +37,7 @@ from utils import (
     is_dirty_state,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.0.12"
 __author__ = "AlessioCasco"
 
 __all__ = [
