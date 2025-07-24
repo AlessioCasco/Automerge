@@ -179,11 +179,19 @@ class TestGitHubClient(unittest.TestCase):
         # Test error scenarios
 ```
 
+This includes additional tools like:
+- **pytest**: Alternative test runner
+- **black**: Code formatter
+- **mypy**: Type checking
+- **pre-commit**: Git hooks
+- **sphinx**: Documentation generation
+
 ### Development Workflow
 1. Make your changes
 2. Run tests: `python run_tests.py --full_no_web`
 3. Fix any linting issues: `ruff check . --fix`
 4. Commit your changes
+5. Create a pull request (coverage will be automatically reported)
 
 ## Usage
 This tool is intended to run as a k8s cronjob during the night; every ~15 minutes for a couple of hours so it can close as many pull requests as possible.
