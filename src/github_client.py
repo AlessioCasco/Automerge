@@ -152,12 +152,19 @@ class GitHubClient:
         Returns:
             Mergeable state of the pull request
         """
-        response = requests.get(
-            url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
-        if response.status_code != 200:
-            print(
-                f"Failed to get info for pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
-        return json.loads(response.text)["mergeable_state"]
+        try:
+            response = requests.get(
+                url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+            if response.status_code != 200:
+                print(
+                    f"Failed to get info for pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                return "unknown"
+
+            data = json.loads(response.text)
+            return data.get("mergeable_state", "unknown")
+        except (requests.exceptions.RequestException, ValueError, KeyError) as e:
+            print(f"Error getting mergeable state: {e}")
+            return "unknown"
 
     def is_approved(self, url: str) -> Optional[Union[bool, str]]:
         """Check if PR is approved already.
@@ -173,17 +180,29 @@ class GitHubClient:
         if response.status_code != 200:
             print(
                 f"Failed to get check if pull request is approved \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+            return None
 
-        for pr in json.loads(response.text):
-            # Checking only if our user approves it
-            if pr["user"]["login"] == self.github_user:
-                if pr["state"] == "APPROVED":
-                    return True
-                elif pr["state"] == "DISMISSED":
-                    return "Dismissed"
-                else:
-                    return False
-        return None
+        reviews = json.loads(response.text)
+        user_reviews = []
+
+        # Collect all reviews from our user
+        for review in reviews:
+            if review["user"]["login"] == self.github_user:
+                user_reviews.append(review)
+
+        if not user_reviews:
+            return None
+
+        # Sort reviews by ID to get the most recent one (GitHub API returns them in chronological order)
+        # but we want to be sure we get the latest state
+        latest_review = max(user_reviews, key=lambda x: x["id"])
+
+        if latest_review["state"] == "APPROVED":
+            return True
+        elif latest_review["state"] == "DISMISSED":
+            return "Dismissed"
+        else:
+            return False
 
     def approve(self, url: str) -> None:
         """Approve a pull request.
@@ -194,18 +213,22 @@ class GitHubClient:
         Raises:
             SystemExit: If API call fails
         """
-        response = requests.post(
-            url + "/reviews",
-            headers=self.headers,
-            json={"event": "APPROVE"},
-            timeout=DEFAULT_TIMEOUT,
-        )
+        try:
+            response = requests.post(
+                url + "/reviews",
+                headers=self.headers,
+                json={"event": "APPROVE"},
+                timeout=DEFAULT_TIMEOUT,
+            )
 
-        if response.status_code != 200:
-            print(
-                f"Failed to approve pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
-            raise SystemExit(1)
-        print("PR Approved")
+            if response.status_code != 200:
+                print(
+                    f"Failed to approve pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                raise SystemExit(1)
+            print("PR Approved")
+        except requests.exceptions.RequestException as e:
+            print(f"Network error approving pull request: {e}")
+            raise SystemExit(1) from e
 
     def comment_pull_req(
         self,
@@ -368,8 +391,13 @@ class GitHubClient:
                 print(f"PR {pr['number']} is behind, updating branch")
                 self.update_branch([pr])
 
-            if not self.is_approved(pr["url"]):
-                print(f"PR {pr['number']} Needs approving...")
+            approval_status = self.is_approved(pr["url"])
+            if not approval_status or approval_status == "Dismissed":
+                if approval_status == "Dismissed":
+                    print(
+                        f"PR {pr['number']} approval was dismissed/stale, re-approving...")
+                else:
+                    print(f"PR {pr['number']} Needs approving...")
                 self.approve(pr["url"])
             else:
                 print(f"PR {pr['number']} Approved already")

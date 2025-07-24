@@ -25,6 +25,9 @@ def read_config(config_file: str) -> Dict[str, Any]:
     except OSError as exc:
         msg = f"Error reading config file at {config_file}. {exc}"
         raise OSError(msg) from exc
+    except json.JSONDecodeError as exc:
+        msg = f"Error reading config file at {config_file}. {exc}"
+        raise OSError(msg) from exc
 
 
 def use_config(config: Dict[str, Any], key: str) -> Union[str, list, dict]:

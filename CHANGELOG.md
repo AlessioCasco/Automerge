@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Resolved relative import issues that prevented running the script directly
 - Fixed multiline f-string syntax errors that caused linting failures
 - Improved code formatting and PEP 8 compliance
+- Added more tests
+- Added `run_tests.py`
+- Added coverage report + CI
 
 ## [1.0.11] - 2025-07-17
 -  Dependabot Pip: Bump rich from 13.9.4 to 14.0.0 #63
