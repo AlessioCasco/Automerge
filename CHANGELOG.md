@@ -8,12 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ## [1.0.12] - 2025-07-24
+- Dependabot Pip: Bump rich from 14.0.0 to 14.1.0 (#74)
 - Dependabot Pip: Bump pygments from 2.19.1 to 2.19.2 #72
 - Fixed import system to support both direct script execution (`python3 src/main.py`) and module execution (`python3 -m src.main`)
 - Resolved relative import issues that prevented running the script directly
 - Fixed multiline f-string syntax errors that caused linting failures
 - Improved code formatting and PEP 8 compliance
-- Added more tests
+- Added more tests to increase coverage.
 - Added `run_tests.py`
 - Added coverage report + CI
 
