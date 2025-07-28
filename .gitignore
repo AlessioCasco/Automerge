@@ -6,7 +6,26 @@ Logs/
 lib64
 myenv/
 
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+venv*/
+env*/
+.virtualenv/
+virtualenv/
+pyvenv.cfg
+
 # Python cache files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Coverage files
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/

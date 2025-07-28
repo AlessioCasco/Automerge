@@ -3,19 +3,34 @@
 import re
 from typing import Dict, List, Any, Tuple
 
-from github_client import GitHubClient
-from utils import (
-    LABEL_AUTOMERGE_IGNORE,
-    LABEL_AUTOMERGE_NO_PROJECT,
-    LABEL_AUTOMERGE_CONFLICT,
-    COMMENT_ATLANTIS_PLAN,
-    COMMENT_ATLANTIS_UNLOCK,
-    COMMENT_IGNORE_AUTOMERGE,
-    COMMENT_CLOSE_NEW_VERSION,
-    COMMENT_NO_PROJECT,
-    format_pr_info,
-    REVIEW_STATE_DISMISSED,
-)
+try:
+    from .github_client import GitHubClient
+    from .utils import (
+        LABEL_AUTOMERGE_IGNORE,
+        LABEL_AUTOMERGE_NO_PROJECT,
+        LABEL_AUTOMERGE_CONFLICT,
+        COMMENT_ATLANTIS_PLAN,
+        COMMENT_ATLANTIS_UNLOCK,
+        COMMENT_IGNORE_AUTOMERGE,
+        COMMENT_CLOSE_NEW_VERSION,
+        COMMENT_NO_PROJECT,
+        format_pr_info,
+        REVIEW_STATE_DISMISSED,
+    )
+except ImportError:
+    from github_client import GitHubClient
+    from utils import (
+        LABEL_AUTOMERGE_IGNORE,
+        LABEL_AUTOMERGE_NO_PROJECT,
+        LABEL_AUTOMERGE_CONFLICT,
+        COMMENT_ATLANTIS_PLAN,
+        COMMENT_ATLANTIS_UNLOCK,
+        COMMENT_IGNORE_AUTOMERGE,
+        COMMENT_CLOSE_NEW_VERSION,
+        COMMENT_NO_PROJECT,
+        format_pr_info,
+        REVIEW_STATE_DISMISSED,
+    )
 
 
 class PRProcessor:
@@ -38,7 +53,8 @@ class PRProcessor:
             r"This PR will be ignored by automerge")
         self.regexp_pr_error = re.compile(
             r"Plan Error|Plan Failed|Continued plan output from previous comment.|via the Atlantis UI|All Atlantis locks for this PR have been unlocked and plans discarded|Renovate will not automatically rebase this PR|Apply Failed|Apply Error")
-        self.regexp_pr_still_working = re.compile(r"atlantis plan|atlantis apply")
+        self.regexp_pr_still_working = re.compile(
+            r"atlantis plan|atlantis apply")
         self.regexp_pr_no_project = re.compile(r"Ran Plan for 0 projects")
         self.regexp_new_version = re.compile(r"A newer version of")
 
@@ -60,7 +76,8 @@ class PRProcessor:
         list_dismissed = []
 
         for pull_req in all_pull_req:
-            last_comment = self.github_client.get_last_comment(pull_req["issue_url"])
+            last_comment = self.github_client.get_last_comment(
+                pull_req["issue_url"])
 
             # Check if PR is dismissed and should be re-approved
             approval_status = self.github_client.is_approved(pull_req["url"])
@@ -110,7 +127,8 @@ class PRProcessor:
 
                 if self.regexp_pr_no_project.search(last_comment["body"]):
                     print(f"{format_pr_info(pull_req)}: {COMMENT_NO_PROJECT}")
-                    self.github_client.set_label_to_pull_request([pull_req], LABEL_AUTOMERGE_NO_PROJECT)
+                    self.github_client.set_label_to_pull_request(
+                        [pull_req], LABEL_AUTOMERGE_NO_PROJECT)
                     continue
 
                 print(f"{format_pr_info(pull_req)}: *** Not match, please check why!!!***")
@@ -137,21 +155,29 @@ class PRProcessor:
 
         if pr_with_diffs:
             print("\nUnlocking PR\n")
-            self.github_client.multi_comments_pull_req(pr_with_diffs, COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
-            self.github_client.set_label_to_pull_request(pr_with_diffs, LABEL_AUTOMERGE_IGNORE)
+            self.github_client.multi_comments_pull_req(
+                pr_with_diffs, COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
+            self.github_client.set_label_to_pull_request(
+                pr_with_diffs, LABEL_AUTOMERGE_IGNORE)
 
         if pr_list_no_comments or pr_list_error:
             print("\n\nCommenting to plan PRs\n")
             for pr in pr_list_no_comments + pr_list_error:
-                mergeable_state = self.github_client.get_mergeable_state(pr["url"])
+                mergeable_state = self.github_client.get_mergeable_state(
+                    pr["url"])
                 if mergeable_state == "dirty":
-                    print(f"{format_pr_info(pr)} Is dirty, there are conflicts, ignoring...")
-                    self.github_client.multi_comments_pull_req([pr], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
-                    self.github_client.set_label_to_pull_request([pr], LABEL_AUTOMERGE_CONFLICT)
+                    print(
+                        f"{format_pr_info(pr)} Is dirty, there are conflicts, ignoring...")
+                    self.github_client.multi_comments_pull_req(
+                        [pr], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
+                    self.github_client.set_label_to_pull_request(
+                        [pr], LABEL_AUTOMERGE_CONFLICT)
                     continue
-                self.github_client.comment_pull_req([pr], COMMENT_ATLANTIS_PLAN)
+                self.github_client.comment_pull_req(
+                    [pr], COMMENT_ATLANTIS_PLAN)
 
         if list_to_be_closed:
             print("\nClosing old PRs\n")
-            self.github_client.multi_comments_pull_req(list_to_be_closed, COMMENT_CLOSE_NEW_VERSION, COMMENT_ATLANTIS_UNLOCK)
+            self.github_client.multi_comments_pull_req(
+                list_to_be_closed, COMMENT_CLOSE_NEW_VERSION, COMMENT_ATLANTIS_UNLOCK)
             self.github_client.close_pull_requests(list_to_be_closed)

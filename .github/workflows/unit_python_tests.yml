@@ -5,12 +5,28 @@ on:
 jobs:
   python-tests:
     runs-on: ubuntu-latest
+    permissions:
+      # Gives the action the necessary permissions for publishing new
+      # comments in pull requests.
+      pull-requests: write
+      # Gives the action the necessary permissions for pushing data to the
+      # python-coverage-comment-action branch, and for editing existing
+      # comments (to avoid publishing multiple comments in the same PR)
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
           pip install -r ./requirements.txt
-      - name: Test with unittest
+      - name: Test with unittest and coverage
         run: |
-          python3 -m unittest discover -s ./tests  -p 'test_*.py'
+          coverage run -m unittest discover -s ./tests -p 'test_*.py'
+          coverage report
+          coverage xml
+      - name: Python Coverage Comment
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINIMUM_GREEN: 80
+          MINIMUM_ORANGE: 70

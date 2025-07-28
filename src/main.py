@@ -3,9 +3,15 @@
 import argparse
 import sys
 
-from config import load_and_validate_config
-from github_client import GitHubClient
-from pr_processor import PRProcessor
+try:
+    from .config import load_and_validate_config
+    from .github_client import GitHubClient
+    from .pr_processor import PRProcessor
+except ImportError:
+    # If relative imports fail, try absolute imports (when run as script)
+    from config import load_and_validate_config
+    from github_client import GitHubClient
+    from pr_processor import PRProcessor
 
 
 def main():
