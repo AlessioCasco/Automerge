@@ -72,7 +72,12 @@ def is_mergeable_state_final(state: str) -> bool:
 
     Returns:
         True if state is final, False otherwise
+
+    Raises:
+        TypeError: If state is None
     """
+    if state is None:
+        raise TypeError("state cannot be None")
     return state != MERGEABLE_STATE_UNKNOWN
 
 

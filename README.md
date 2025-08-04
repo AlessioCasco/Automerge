@@ -1,6 +1,6 @@
+![CI](https://github.com/AlessioCasco/automerge/actions/workflows/ci.yml/badge.svg)
 ![Lint & tests](https://github.com/AlessioCasco/automerge/actions/workflows/at-every-commit.yml/badge.svg)
 ![Docker Build](https://github.com/AlessioCasco/automerge/actions/workflows/build_and_push.yml/badge.svg)
-
 # Automerge for GitHub and Atlantis
 
 Used to automatically merge terraform dependencies pull requests in GitHub that result in no differences.
@@ -82,6 +82,142 @@ Move to `/charts/automerge`, tune your `values.yaml` file and run:
 ```
 helm install -f values.yaml automerge -n <your_namespace> .
 ```
+
+## Testing and Development
+
+### Manual Testing Commands
+```bash
+# Install dependencies (including coverage)
+pip install -r requirements.txt
+
+# Run tests only
+python -m unittest discover -s ./tests -p 'test_*.py' -v
+```
+### Manual Coverage Commands
+```bash
+# Run tests with coverage
+coverage run -m unittest discover -s ./tests -p 'test_*.py'
+
+# Generate coverage report
+coverage report
+
+# Generate HTML coverage report
+coverage html
+```
+### Manual ruff Commands
+```bash
+# Run code linting
+ruff check .
+
+# Auto-fix linting issues
+ruff check . --fix
+```
+
+### Running Specific Tests
+```bash
+# Run tests for a specific module
+python -m unittest tests.test_config -v
+
+# Run a specific test class
+python -m unittest tests.test_github_client.TestIsApproved -v
+
+# Run a single test method
+python -m unittest tests.test_config.TestValidateConfig.test_validate_config_success -v
+
+# Run tests matching a pattern
+python -m unittest discover -s ./tests -p 'test_github*' -v
+
+# Run tests with verbose output
+python -m unittest discover -s ./tests -p 'test_*.py' -v
+
+# Run tests and stop on first failure
+python -m unittest discover -s ./tests -p 'test_*.py' --failfast
+```
+
+### Continuous Integration
+The project uses GitHub Actions for CI/CD with:
+- **Python Coverage Comment Action**: Automatically comments coverage reports on PRs
+- **Multi-version testing**: Tests against Python 3.9, 3.10, 3.11, and 3.12
+- **Code linting**: Uses Ruff for code quality checks
+- **Coverage reporting**: Generates detailed coverage reports
+
+Coverage reports are automatically generated and commented on pull requests, helping maintain code quality standards.
+
+### Coverage Configuration
+
+The project uses a `.coveragerc` file to configure coverage reporting:
+
+```ini
+[run]
+source = src
+relative_files = true
+omit = tests/*, .venv/*, venv/*, */site-packages/*
+
+[report]
+show_missing = True
+precision = 2
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml
+```
+
+Key settings:
+- **`relative_files = true`**: Required for GitHub Actions integration
+- **`source = src`**: Only measure coverage for source code
+- **`omit`**: Exclude test files and virtual environments
+
+### Test File Organization
+
+The test suite is organized in the `tests/` directory with the following structure:
+
+```
+tests/
+├── test_config.py          # Configuration loading and validation tests
+├── test_github_client.py   # GitHub API interaction tests
+├── test_pr_processor.py    # Pull request processing logic tests
+├── test_utils.py           # Utility function tests
+├── test_main.py            # Main application tests
+├── test_dismissed_prs.py   # Dismissed PR handling tests
+└── test_conf.py            # Test utilities and mock objects
+```
+
+**Test Naming Conventions:**
+- Test files: `test_<module_name>.py`
+- Test classes: `Test<ClassName>`
+- Test methods: `test_<functionality>_<scenario>`
+
+**Example Test Structure:**
+```python
+class TestGitHubClient(unittest.TestCase):
+    def setUp(self):
+        # Test setup code
+
+    def test_is_approved_true(self):
+        # Test when PR is approved
+
+    def test_is_approved_false(self):
+        # Test when PR is not approved
+
+    def test_is_approved_error_handling(self):
+        # Test error scenarios
+```
+
+This includes additional tools like:
+- **pytest**: Alternative test runner
+- **black**: Code formatter
+- **mypy**: Type checking
+- **pre-commit**: Git hooks
+- **sphinx**: Documentation generation
+
+### Development Workflow
+1. Make your changes
+2. Run tests: `python run_tests.py --full_no_web`
+3. Fix any linting issues: `ruff check . --fix`
+4. Commit your changes
+5. Create a pull request (coverage will be automatically reported)
 
 ## Usage
 This tool is intended to run as a k8s cronjob during the night; every ~15 minutes for a couple of hours so it can close as many pull requests as possible.

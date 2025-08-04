@@ -8,12 +8,20 @@ from typing import Dict, List, Optional, Any, Union
 import requests
 from rich.console import Console
 
-from utils import (
-    DEFAULT_TIMEOUT,
-    MERGEABLE_STATE_TIMEOUT,
-    GITHUB_API_VERSION,
-    GITHUB_ACCEPT_HEADER,
-)
+try:
+    from .utils import (
+        DEFAULT_TIMEOUT,
+        MERGEABLE_STATE_TIMEOUT,
+        GITHUB_API_VERSION,
+        GITHUB_ACCEPT_HEADER,
+    )
+except ImportError:
+    from utils import (
+        DEFAULT_TIMEOUT,
+        MERGEABLE_STATE_TIMEOUT,
+        GITHUB_API_VERSION,
+        GITHUB_ACCEPT_HEADER,
+    )
 
 
 class GitHubClient:
@@ -63,7 +71,8 @@ class GitHubClient:
 
             print(f"Fetching all PR's from {repo}")
 
-            response = requests.get(pr_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+            response = requests.get(
+                pr_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
             if response.status_code != 200:
                 print(
                     f"Failed to get pull request. \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
@@ -93,7 +102,8 @@ class GitHubClient:
             update_url = pull_req["url"] + "/update-branch"
             print(f"Updating PR Number: {pull_req['number']} in repo {pull_req['head']['repo']['name']}")
 
-            response = requests.put(update_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+            response = requests.put(
+                update_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
             if response.status_code != 202:
                 print(
                     f"Failed to update branch in pull request {pull_req['number']} in repo {pull_req['head']['repo']['name']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
@@ -109,7 +119,8 @@ class GitHubClient:
             The last comment from the pull request or None if no comments
         """
         comments_url = pull_req_url + "/comments?per_page=50"
-        response = requests.get(comments_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+        response = requests.get(
+            comments_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
         if response.status_code != 200:
             return None
         comments = json.loads(response.text)
@@ -119,10 +130,12 @@ class GitHubClient:
             links = response.headers["Link"].split(", ")
             for link in links:
                 if 'rel="last"' in link:
-                    last_page_url = link[link.index("<") + 1 : link.index(">")]
-                    last_page_response = requests.get(last_page_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+                    last_page_url = link[link.index("<") + 1: link.index(">")]
+                    last_page_response = requests.get(
+                        last_page_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
                     if last_page_response.status_code == 200:
-                        last_page_comments = json.loads(last_page_response.text)
+                        last_page_comments = json.loads(
+                            last_page_response.text)
                         if last_page_comments:
                             return last_page_comments[-1]
 
@@ -139,11 +152,19 @@ class GitHubClient:
         Returns:
             Mergeable state of the pull request
         """
-        response = requests.get(url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
-        if response.status_code != 200:
-            print(
-                f"Failed to get info for pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
-        return json.loads(response.text)["mergeable_state"]
+        try:
+            response = requests.get(
+                url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+            if response.status_code != 200:
+                print(
+                    f"Failed to get info for pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                return "unknown"
+
+            data = json.loads(response.text)
+            return data.get("mergeable_state", "unknown")
+        except (requests.exceptions.RequestException, ValueError, KeyError) as e:
+            print(f"Error getting mergeable state: {e}")
+            return "unknown"
 
     def is_approved(self, url: str) -> Optional[Union[bool, str]]:
         """Check if PR is approved already.
@@ -154,21 +175,34 @@ class GitHubClient:
         Returns:
             True if approved, False if not approved, None if no review found, "Dismissed" if dismissed
         """
-        response = requests.get(url + "/reviews", headers=self.headers, timeout=DEFAULT_TIMEOUT)
+        response = requests.get(
+            url + "/reviews", headers=self.headers, timeout=DEFAULT_TIMEOUT)
         if response.status_code != 200:
             print(
                 f"Failed to get check if pull request is approved \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+            return None
 
-        for pr in json.loads(response.text):
-            # Checking only if our user approves it
-            if pr["user"]["login"] == self.github_user:
-                if pr["state"] == "APPROVED":
-                    return True
-                elif pr["state"] == "DISMISSED":
-                    return "Dismissed"
-                else:
-                    return False
-        return None
+        reviews = json.loads(response.text)
+        user_reviews = []
+
+        # Collect all reviews from our user
+        for review in reviews:
+            if review["user"]["login"] == self.github_user:
+                user_reviews.append(review)
+
+        if not user_reviews:
+            return None
+
+        # Sort reviews by ID to get the most recent one (GitHub API returns them in chronological order)
+        # but we want to be sure we get the latest state
+        latest_review = max(user_reviews, key=lambda x: x["id"])
+
+        if latest_review["state"] == "APPROVED":
+            return True
+        elif latest_review["state"] == "DISMISSED":
+            return "Dismissed"
+        else:
+            return False
 
     def approve(self, url: str) -> None:
         """Approve a pull request.
@@ -179,18 +213,22 @@ class GitHubClient:
         Raises:
             SystemExit: If API call fails
         """
-        response = requests.post(
-            url + "/reviews",
-            headers=self.headers,
-            json={"event": "APPROVE"},
-            timeout=DEFAULT_TIMEOUT,
-        )
+        try:
+            response = requests.post(
+                url + "/reviews",
+                headers=self.headers,
+                json={"event": "APPROVE"},
+                timeout=DEFAULT_TIMEOUT,
+            )
 
-        if response.status_code != 200:
-            print(
-                f"Failed to approve pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
-            raise SystemExit(1)
-        print("PR Approved")
+            if response.status_code != 200:
+                print(
+                    f"Failed to approve pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                raise SystemExit(1)
+            print("PR Approved")
+        except requests.exceptions.RequestException as e:
+            print(f"Network error approving pull request: {e}")
+            raise SystemExit(1) from e
 
     def comment_pull_req(
         self,
@@ -353,8 +391,13 @@ class GitHubClient:
                 print(f"PR {pr['number']} is behind, updating branch")
                 self.update_branch([pr])
 
-            if not self.is_approved(pr["url"]):
-                print(f"PR {pr['number']} Needs approving...")
+            approval_status = self.is_approved(pr["url"])
+            if not approval_status or approval_status == "Dismissed":
+                if approval_status == "Dismissed":
+                    print(
+                        f"PR {pr['number']} approval was dismissed/stale, re-approving...")
+                else:
+                    print(f"PR {pr['number']} Needs approving...")
                 self.approve(pr["url"])
             else:
                 print(f"PR {pr['number']} Approved already")
@@ -413,7 +456,8 @@ class GitHubClient:
                 no_changes_pattern = re.compile(
                     r"No changes. Your infrastructure matches the configuration|Apply complete!")
                 if no_changes_pattern.search(last_comment["body"]):
-                    print(f"PR {pr['number']} has no changes after re-approval, merging...")
+                    print(
+                        f"PR {pr['number']} has no changes after re-approval, merging...")
                     self.merge_pull_req([pr])
                 else:
                     print(f"PR {pr['number']} still has changes after re-approval, will be processed in next run.")

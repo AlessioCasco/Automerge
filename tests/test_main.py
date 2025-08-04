@@ -7,15 +7,20 @@ from unittest.mock import call
 
 # Add src directory to path so we can import the modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# Add tests directory to path for test utilities
+sys.path.insert(0, os.path.dirname(__file__))
 
 from github_client import GitHubClient  # noqa: E402
+
 
 class TestGetPullRequests(unittest.TestCase):
     def setUp(self):
         self.base_repos_url = "https://api.github.com/repos/owner/"
-        self.repos = ["terraform-a", "terraform-b", "terraform-c", "terraform-d"]
+        self.repos = ["terraform-a", "terraform-b",
+                      "terraform-c", "terraform-d"]
         self.access_token = "my_access_token"
-        self.github_client = GitHubClient(self.access_token, "owner", "test_user")
+        self.github_client = GitHubClient(
+            self.access_token, "owner", "test_user")
 
     @patch("requests.get")
     def test_get_pull_requests_regex(self, mock_get):
@@ -53,7 +58,8 @@ class TestGetPullRequests(unittest.TestCase):
 
         # Call the function and check the results
         filters = ["^\\[DEPENDENCIES\\] Update Terraform", "^\\[Dependabot\\]"]
-        pull_requests = self.github_client.get_pull_requests(self.repos, filters)
+        pull_requests = self.github_client.get_pull_requests(
+            self.repos, filters)
         self.assertEqual(len(pull_requests), 7)
 
         values_list = [d["title"] for d in pull_requests]
@@ -72,11 +78,16 @@ class TestGetPullRequests(unittest.TestCase):
 
         # Check that the requests.get function was called with the correct arguments
         mock_get.assert_has_calls([
-            call("https://api.github.com/repos/owner/terraform-a/pulls?per_page=100", headers=self.github_client.headers, timeout=10),
-            call("https://api.github.com/repos/owner/terraform-b/pulls?per_page=100", headers=self.github_client.headers, timeout=10),
-            call("https://api.github.com/repos/owner/terraform-c/pulls?per_page=100", headers=self.github_client.headers, timeout=10),
-            call("https://api.github.com/repos/owner/terraform-d/pulls?per_page=100", headers=self.github_client.headers, timeout=10)
+            call("https://api.github.com/repos/owner/terraform-a/pulls?per_page=100",
+                 headers=self.github_client.headers, timeout=10),
+            call("https://api.github.com/repos/owner/terraform-b/pulls?per_page=100",
+                 headers=self.github_client.headers, timeout=10),
+            call("https://api.github.com/repos/owner/terraform-c/pulls?per_page=100",
+                 headers=self.github_client.headers, timeout=10),
+            call("https://api.github.com/repos/owner/terraform-d/pulls?per_page=100",
+                 headers=self.github_client.headers, timeout=10)
         ])
+
 
 class MockResponse:
     def __init__(self, json_data, status_code):
