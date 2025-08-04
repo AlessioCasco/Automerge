@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ## [1.0.12] - 2025-07-24
+- Dependabot Pip: Bump certifi from 2025.7.14 to 2025.8.3 #75
 - Dependabot Pip: Bump rich from 14.0.0 to 14.1.0 (#74)
 - Dependabot Pip: Bump pygments from 2.19.1 to 2.19.2 #72
 - Fixed import system to support both direct script execution (`python3 src/main.py`) and module execution (`python3 -m src.main`)
