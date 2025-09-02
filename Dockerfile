@@ -1,4 +1,4 @@
-FROM debian:12-slim AS build
+FROM debian:13-slim AS build
 
 # Prevents Python from writing pyc files.
 ENV PYTHONDONTWRITEBYTECODE=1
