@@ -35,6 +35,51 @@ COMMENT_IGNORE_AUTOMERGE = "This PR will be ignored by automerge"
 COMMENT_CLOSE_NEW_VERSION = "This PR will be closed since there is a new version of this dependency"
 COMMENT_NO_PROJECT = "Will be ignored, 0 projects planned, usually due to modules update or no file changed, check and close them yourself please"
 
+# AI Confidence Score Comments
+COMMENT_CONFIDENCE_SCORE_TEMPLATE = """🤖 **AI Confidence Score Analysis**
+
+**Confidence Score:** {score}%
+
+**Explanation:** {explanation}
+
+**Environment:** {environment}
+
+**Auto-merge Status:** {auto_merge_status}
+
+**AI Provider:** {provider} ({model})
+**Token Usage:** {input_tokens} input, {output_tokens} output
+
+---
+*This analysis was performed by {provider} AI to assess the safety of automatic merging.*"""
+
+COMMENT_CONFIDENCE_SCORE_ERROR = """🤖 **AI Confidence Score Analysis**
+
+**Error:** {error}
+
+**Fallback Score:** {score}%
+
+**Explanation:** {explanation}
+
+**Environment:** {environment}
+
+**Auto-merge Status:** {auto_merge_status}
+
+---
+*AI analysis failed, using fallback logic.*"""
+
+COMMENT_CONFIDENCE_SCORE_AI_FAILURE = """🤖 **AI Confidence Score Analysis**
+
+**Status:** ❌ AI Analysis Failed
+
+**Reason:** {reason}
+
+**Details:** {details}
+
+**Recommendation:** {recommendation}
+
+---
+*AI analysis could not be performed due to the above issue. Please check the PR status and try again later.*"""
+
 # Merge method
 MERGE_METHOD_SQUASH = "squash"
 

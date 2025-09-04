@@ -28,7 +28,21 @@ Automerge (for now) works only with [github](github.com) repos and [atlantis](ru
   "repos" : [
     "terraform-vault",
     "terraform-aws"
-  ]
+  ],
+  "enable_ai_confidence_score" : false,
+  "enable_ai_automerge_action" : false,
+  "ai_provider" : "github",
+  "ai_config" : {
+    "github" : {
+      "api_base" : "http://localhost:4141",
+      "model" : "claude-sonnet-4"
+    },
+    "claude-code" : {
+      "api_base" : "https://api.anthropic.com",
+      "api_key" : "your_anthropic_api_key_here",
+      "model" : "claude-3-5-sonnet-20241022"
+    }
+  }
 }
 ```
 
@@ -41,7 +55,69 @@ Automerge (for now) works only with [github](github.com) repos and [atlantis](ru
 * `owner`: Owner of the repos where we want to check the pull requests.
 * `repos`: list of repo names that you want to check pull requests from (note that they all need to be under the same owner).
   * ie `https://github.com/Owner/repo/`
+* `enable_ai_confidence_score`: Enable AI-powered confidence score calculation using GitHub Copilot (default: false).
+  * When enabled, the system analyzes PRs to determine if they can be safely merged automatically.
+  * Requires GitHub token with Copilot API permissions.
+* `enable_ai_automerge_action`: Enable automatic merging for PRs with 100% confidence in development environments (default: false).
+  * Only works when `enable_ai_confidence_score` is also enabled.
+  * Auto-merge is restricted to development environments only.
+  * Requires 100% confidence score for auto-merge.
+* `disable_pr_comments`: Disable posting comments to PRs and print AI analysis only to terminal (default: false).
+  * When enabled, AI confidence score analysis is printed to terminal instead of being posted as PR comments.
+  * Useful for testing or when you want to avoid cluttering PRs with comments.
+  * AI analysis is still performed and logged to terminal.
+* `ai_repos`: List of repositories to process with AI analysis (optional).
+  * These repositories are processed with AI analysis when PRs have diffs.
+  * AI analysis is performed during the standard processing cycle.
+  * Useful for repositories that need AI-powered confidence scoring.
+* `ai_provider`: Choose the AI provider for confidence score calculation (default: "github").
+  * Options: "github" (GitHub Copilot via proxy) or "claude-code" (Claude Code direct API).
+  * Required when `enable_ai_confidence_score` is enabled.
+* `ai_config`: Configuration for the selected AI provider.
+  * **For GitHub Copilot**: Requires `api_base` (proxy URL) and `model` (model name).
+  * **For Claude Code**: Requires `api_base` (API URL), `api_key` (Anthropic API key), and `model` (model name).
+* `test_prs`: List of specific PRs to analyze for AI confidence score testing (optional).
+  * Each test PR should have `repo` (string) and `pr_number` (integer) fields.
+  * These PRs are analyzed regardless of their merge status when AI is enabled.
+  * Useful for testing AI features on specific PRs.
 
+
+### AI Provider Configuration
+
+The tool supports two AI providers for confidence score calculation:
+
+#### GitHub Copilot (via proxy)
+```json
+{
+  "ai_provider": "github",
+  "ai_config": {
+    "github": {
+      "api_base": "http://localhost:4141",
+      "model": "claude-sonnet-4"
+    }
+  }
+}
+```
+
+#### Claude Code (direct API)
+```json
+{
+  "ai_provider": "claude-code",
+  "ai_config": {
+    "claude-code": {
+      "api_base": "https://api.anthropic.com",
+      "api_key": "your_anthropic_api_key_here",
+      "model": "claude-sonnet-4"
+    }
+  }
+}
+```
+
+**Note:** If you encounter SSL certificate verification errors in local development environments, you can disable SSL verification by setting the environment variable:
+```bash
+export DISABLE_SSL_VERIFY=true
+```
+This should only be used in development/testing environments, never in production.
 
 ## GitHub Config
 ### Branch protection
@@ -52,6 +128,211 @@ This because automerge does not `bypass branch protections`. Before merging any 
 ### Codeowners
 Since the GitHub user leveraged by Automerge has to be able to comment, approve and merge pull requests, depending on your GitHub configs it may be required to add such a user in the [codeowners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners) file and also as writer for the repository.
 
+## AI Confidence Score Feature
+
+Automerge includes an AI-powered feature that analyzes pull requests to determine if they can be safely merged automatically. This feature uses GitHub Copilot to calculate confidence scores (0-100%) based on various factors.
+
+### How It Works
+
+1. **Context Extraction**: The system extracts relevant information from PRs:
+   - Title and description
+   - Repository and branch information
+   - Labels
+   - Terraform plan output from comments
+
+2. **AI Analysis**: GitHub Copilot analyzes the PR context and provides a confidence score with explanation
+
+3. **Environment Detection**: The system determines if the PR targets a development environment based on branch patterns
+
+4. **Auto-Merge Logic**: Auto-merge is only enabled when:
+   - `enable_ai_automerge_action` is set to `true`
+   - The PR targets a development environment
+   - The confidence score is exactly 100%
+
+### Safety Rules
+
+- **Production Protection**: Production/protected branches are never auto-merged
+- **Development Only**: Only development environments can be auto-merged
+- **100% Confidence**: Confidence score must be 100% for auto-merge
+- **Fallback Logic**: System continues working even if AI is unavailable
+
+### AI Repository Processing
+
+The tool now supports AI analysis for specific repositories during the standard processing cycle:
+
+1. **Standard Processing**: All repositories are processed normally
+   - PRs are categorized based on their state
+   - Standard merge and planning logic applies
+
+2. **AI Analysis**: For repositories in the `ai_repos` list, when PRs have diffs:
+   - AI confidence score analysis is performed
+   - Auto-merge is applied if conditions are met (100% confidence + dev environment)
+   - Robust error handling for various failure scenarios
+
+3. **Integration**: AI analysis is seamlessly integrated into the existing workflow
+   - No separate processing cycles
+   - No additional wait times
+   - Maintains existing behavior for non-AI repositories
+
+### AI Failure Handling
+
+The system now provides detailed feedback when AI analysis cannot be performed:
+
+- **No Plan Found**: When Atlantis hasn't generated a plan yet
+- **Plan in Progress**: When Atlantis is still running the plan
+- **Lock Conflicts**: When another PR has acquired the lock
+- **Plan Errors**: When the Terraform plan contains errors
+- **AI Service Errors**: When the AI service is unavailable
+
+Each failure includes:
+- Clear reason for the failure
+- Detailed explanation
+- Recommended action for resolution
+
+### Example Output
+
+The system adds a formatted comment to each analyzed PR:
+
+```
+🤖 **AI Confidence Score Analysis**
+
+**Confidence Score:** 95%
+
+**Explanation:** Safe provider update with no breaking changes
+
+**Environment:** Development
+
+**Auto-merge Status:** ❌ Disabled
+
+---
+*This analysis was performed by GitHub Copilot AI to assess the safety of automatic merging.*
+```
+
+### Environment Variables
+
+You can also control the AI features via environment variables:
+
+- `ENABLE_AI_CONFIDENCE_SCORE`: Override AI confidence score setting
+- `ENABLE_AI_AUTOMERGE_ACTION`: Override AI auto-merge setting
+- `LOG_LEVEL`: Set logging level (DEBUG, INFO, WARNING, ERROR)
+
+### Logging Configuration
+
+The tool supports detailed logging for debugging AI interactions:
+
+```bash
+# Enable debug logging via CLI
+python -m src.main --config config.json --log_level DEBUG
+
+# Enable debug logging via environment variable
+export LOG_LEVEL=DEBUG
+python -m src.main --config config.json
+```
+
+Debug logging will show:
+- 🤖 AI API call details (URL, model, headers, payload)
+- 🔍 PR analysis context (title, repository, branches, environment)
+- 📝 Generated prompts and their length
+- ✅ AI responses and parsing results
+- 📊 Confidence scores and explanations
+- 🔄 Fallback logic usage
+- ❌ Error details and exceptions
+
+### Terraform Plan Analysis
+
+The AI confidence score calculation now specifically analyzes Terraform plans from the `tl-terraform` user:
+
+- **Multi-comment Plans**: Handles plans split across multiple comments
+- **Continuation Detection**: Recognizes "Continued plan output from previous comment." headers
+- **Chronological Order**: Combines plan parts in the correct sequence
+- **Latest Plan**: Always uses the most recent plan from the specified user
+
+The system will:
+1. Fetch all comments from the PR
+2. Filter comments by the `tl-terraform` user
+3. Sort by creation date (newest first)
+4. Identify the latest complete plan (including continuations)
+5. Combine all plan parts in chronological order
+6. Remove continuation headers for clean output
+
+### Example Plan Detection
+
+```bash
+# Test Terraform plan extraction
+python test_terraform_plan.py
+```
+
+This will show:
+- Plan length and preview
+- Detection of continuation patterns
+- Debug information if no plan is found
+
+For a PR like [TrueLayer/terraform-ops#23680](https://github.com/TrueLayer/terraform-ops/pull/23680):
+
+- **Type**: Provider update
+- **Changes**: Adding new S3 bucket field (non-breaking)
+- **Environment**: Development
+- **Confidence Score**: 100%
+- **Result**: Auto-merge enabled
+
+### Test PRs Configuration
+
+You can specify specific PRs for AI testing in your configuration:
+
+```json
+{
+  "test_prs": [
+    {
+      "repo": "terraform-ops",
+      "pr_number": 23680
+    },
+    {
+      "repo": "terraform-aws",
+      "pr_number": 123
+    }
+  ]
+}
+```
+
+These PRs will be analyzed for AI confidence scores regardless of their merge status, making them perfect for testing the AI functionality.
+
+### Error Handling
+
+The system includes robust error handling:
+
+- **AI Service Unavailable**: Falls back to pattern-based analysis
+- **Network Errors**: Logs errors and continues with fallback
+- **Invalid Responses**: Uses default confidence scores
+- **Configuration Errors**: Disables AI features gracefully
+
+### Testing AI Features
+
+Run the AI feature tests:
+
+```bash
+python -m unittest tests.test_ai_confidence -v
+```
+
+Or test the complete functionality:
+
+```bash
+python test_ai_example.py
+```
+
+### Testing Test PRs Feature
+
+Run the test PRs feature tests:
+
+```bash
+python -m unittest tests.test_test_prs -v
+```
+
+Or test the complete functionality:
+
+```bash
+python test_test_prs_example.py
+```
+
 ## Usage
 ### Options
 ```bash
@@ -60,6 +341,8 @@ options:
   --config_file CONFIG_FILE
                         JSON file holding the GitHub access token, default is .config.json
   --approve_all         Approves all PRs that match the filters in the config
+  --log_level {DEBUG,INFO,WARNING,ERROR}
+                        Set logging level (DEBUG, INFO, WARNING, ERROR)
 ```
 
 ### Python
@@ -81,6 +364,17 @@ docker run -d -v ./config.json:/app/config.json --name automerge alessiocasco/au
 Move to `/charts/automerge`, tune your `values.yaml` file and run:
 ```
 helm install -f values.yaml automerge -n <your_namespace> .
+```
+
+The Helm chart supports AI features via environment variables:
+
+```yaml
+job:
+  env:
+    - name: ENABLE_AI_CONFIDENCE_SCORE
+      value: "false"
+    - name: ENABLE_AI_AUTOMERGE_ACTION
+      value: "false"
 ```
 
 ## Testing and Development
@@ -132,6 +426,12 @@ python -m unittest discover -s ./tests -p 'test_*.py' -v
 
 # Run tests and stop on first failure
 python -m unittest discover -s ./tests -p 'test_*.py' --failfast
+
+# Run AI confidence score tests
+python -m unittest tests.test_ai_confidence -v
+
+# Run test PRs tests
+python -m unittest tests.test_test_prs -v
 ```
 
 ### Continuous Integration
@@ -181,7 +481,9 @@ tests/
 ├── test_utils.py           # Utility function tests
 ├── test_main.py            # Main application tests
 ├── test_dismissed_prs.py   # Dismissed PR handling tests
-└── test_conf.py            # Test utilities and mock objects
+├── test_conf.py            # Test utilities and mock objects
+├── test_ai_confidence.py   # AI confidence score feature tests
+└── test_test_prs.py        # Test PRs feature tests
 ```
 
 **Test Naming Conventions:**

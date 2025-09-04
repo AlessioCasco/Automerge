@@ -89,6 +89,44 @@ class GitHubClient:
         print("All pull requests fetched\n")
         return dependency_prs
 
+    def get_specific_pull_requests(self, test_prs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Get specific pull requests for testing purposes.
+
+        Args:
+            test_prs: List of test PR configurations with repo and pr_number
+
+        Returns:
+            List of pull requests that match the test configuration
+
+        Raises:
+            SystemExit: If API call fails
+        """
+        specific_prs = []
+
+        for test_pr in test_prs:
+            repo = test_pr["repo"]
+            pr_number = test_pr["pr_number"]
+            
+            pr_url = f"{self.base_repos_url}{repo}/pulls/{pr_number}"
+            print(f"Fetching specific PR #{pr_number} from {repo}")
+
+            response = requests.get(
+                pr_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+            
+            if response.status_code == 200:
+                pr_data = json.loads(response.text)
+                specific_prs.append(pr_data)
+                print(f"Successfully fetched PR #{pr_number} from {repo}")
+            elif response.status_code == 404:
+                print(f"PR #{pr_number} not found in {repo}, skipping...")
+            else:
+                print(
+                    f"Failed to get PR #{pr_number} from {repo}. \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                raise SystemExit(1)
+
+        print(f"Fetched {len(specific_prs)} specific pull requests\n")
+        return specific_prs
+
     def update_branch(self, pull_req_list: List[Dict[str, Any]]) -> None:
         """Update a branch.
 
@@ -142,6 +180,125 @@ class GitHubClient:
         if comments:
             return comments[-1]
         return None
+
+    def get_last_terraform_plan(self, pull_req_url: str, terraform_user: str = "tl-terraform") -> Optional[str]:
+        """Get the last terraform plan from a specific user.
+
+        Args:
+            pull_req_url: URL of the pull request
+            terraform_user: GitHub username of the terraform user (default: tl-terraform)
+
+        Returns:
+            Complete terraform plan text or None if no plan found
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.debug(f"🔍 Starting terraform plan extraction for {pull_req_url}")
+        logger.debug(f"   Looking for user: {terraform_user}")
+        
+        page = 1
+        per_page = 100
+        
+        while True:
+            # Get comments for current page
+            comments_url = f"{pull_req_url}/comments?per_page={per_page}&page={page}"
+            logger.debug(f"   Fetching page {page}: {comments_url}")
+            
+            response = requests.get(
+                comments_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+            
+            if response.status_code != 200:
+                logger.error(f"   ❌ Failed to fetch comments: {response.status_code}")
+                return None
+            
+            comments = json.loads(response.text)
+            logger.debug(f"   📄 Found {len(comments)} comments on page {page}")
+            
+            # If no more comments, stop
+            if not comments:
+                logger.debug(f"   🛑 No more comments found, stopping search")
+                return None
+            
+            # Filter comments by the terraform user
+            terraform_comments = [
+                comment for comment in comments 
+                if comment.get("user", {}).get("login") == terraform_user
+            ]
+            
+            logger.debug(f"   👤 Found {len(terraform_comments)} comments from {terraform_user} on page {page}")
+            
+            # If no terraform comments on this page, go to next page
+            if not terraform_comments:
+                logger.debug(f"   ➡️  No {terraform_user} comments on page {page}, moving to next page")
+                page += 1
+                continue
+            
+            # Sort by creation date (newest first)
+            terraform_comments.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            logger.debug(f"   📅 Sorted {len(terraform_comments)} comments by creation date")
+            
+            # Find the most recent comment that starts with "Ran Plan for project"
+            for i, comment in enumerate(terraform_comments):
+                comment_body = comment.get("body", "")
+                created_at = comment.get("created_at", "unknown")
+                
+                logger.debug(f"   🔍 Checking comment {i+1}/{len(terraform_comments)} from {created_at}")
+                logger.debug(f"      Preview: {comment_body[:100]}{'...' if len(comment_body) > 100 else ''}")
+                
+                if comment_body.startswith("Ran Plan for project"):
+                    logger.debug(f"   ✅ Found 'Ran Plan for project' comment!")
+                    
+                    # Extract content from <details> block
+                    plan_content = self._extract_plan_from_details(comment_body)
+                    if plan_content:
+                        logger.debug(f"   📋 Successfully extracted plan from <details> block ({len(plan_content)} chars)")
+                        return plan_content
+                    else:
+                        logger.debug(f"   📋 No <details> block found, returning full comment body ({len(comment_body)} chars)")
+                        return comment_body
+                else:
+                    logger.debug(f"   ❌ Comment does not start with 'Ran Plan for project'")
+            
+            logger.debug(f"   ➡️  No 'Ran Plan for project' comments found on page {page}, moving to next page")
+            page += 1
+
+    def _extract_plan_from_details(self, comment_body: str) -> str:
+        """Extract Terraform plan content from <details> block.
+
+        Args:
+            comment_body: Full comment body
+
+        Returns:
+            Extracted plan content or empty string if not found
+        """
+        import re
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.debug(f"   🔧 Extracting plan from <details> block")
+        logger.debug(f"      Comment body length: {len(comment_body)} characters")
+        
+        # Look for <details> block with plan content
+        details_pattern = r'<details><summary>Show Output</summary>\s*```(?:diff|hcl|terraform)?\s*(.*?)```\s*</details>'
+        match = re.search(details_pattern, comment_body, re.DOTALL)
+        
+        if match:
+            extracted_content = match.group(1).strip()
+            logger.debug(f"      ✅ Found <details> block, extracted {len(extracted_content)} characters")
+            logger.debug(f"      Preview: {extracted_content[:200]}{'...' if len(extracted_content) > 200 else ''}")
+            return extracted_content
+        
+        logger.debug(f"      ❌ No <details> block found with pattern")
+        
+        # If no details block, look for plan summary at the end
+        plan_summary_pattern = r'Plan: \d+ to add, \d+ to change, \d+ to destroy\.'
+        if re.search(plan_summary_pattern, comment_body):
+            logger.debug(f"      ✅ Found plan summary pattern, returning full comment body")
+            return comment_body
+        
+        logger.debug(f"      ❌ No plan summary pattern found either")
+        return ""
 
     def get_mergeable_state(self, url: str) -> str:
         """Get the mergeable state of the PR.

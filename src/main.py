@@ -2,6 +2,8 @@
 
 import argparse
 import sys
+import os
+import logging
 
 try:
     from .config import load_and_validate_config
@@ -37,7 +39,23 @@ def main():
             action="store_true",
             default=False,
             help="Approves all PRs that match the filters in the config")
+        parser.add_argument(
+            "--log_level",
+            type=str,
+            default="INFO",
+            choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+            help="Set logging level (DEBUG, INFO, WARNING, ERROR)")
         args = parser.parse_args()
+
+        # Set logging level from CLI argument or environment variable
+        log_level = os.environ.get('LOG_LEVEL', args.log_level).upper()
+        logging.getLogger().setLevel(getattr(logging, log_level, logging.INFO))
+        
+        # Configure logging format
+        logging.basicConfig(
+            level=getattr(logging, log_level, logging.INFO),
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
 
         # Load and validate configuration
         config = load_and_validate_config(args.config_file)
@@ -55,15 +73,27 @@ def main():
         # Get all pull requests
         all_pulls = github_client.get_pull_requests(repos, filters)
 
+        # Get test PRs if configured
+        test_prs = config.get("test_prs", [])
+        if test_prs:
+            print(f"Found {len(test_prs)} test PRs configured")
+            test_pulls = github_client.get_specific_pull_requests(test_prs)
+        else:
+            test_pulls = []
+
         if args.approve_all:
             print("Only Approving Now")
             github_client.approve_all_prs(all_pulls)
             sys.exit(0)
 
         # Initialize PR processor
-        pr_processor = PRProcessor(github_client)
+        pr_processor = PRProcessor(github_client, config)
 
-        # Process pull requests
+        # Process test PRs first (if AI is enabled)
+        if test_pulls and config.get("enable_ai_confidence_score", False):
+            pr_processor.process_test_prs(test_prs)
+
+        # Process regular pull requests
         pr_processor.process_prs(all_pulls, args.force)
 
         print("\nAll done, exiting\n")
