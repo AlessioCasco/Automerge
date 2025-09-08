@@ -25,7 +25,21 @@ class TestPRProcessorInit(unittest.TestCase):
     def test_init_with_github_client(self):
         """Test PRProcessor initialization with GitHubClient."""
         mock_client = Mock()
-        processor = PRProcessor(mock_client)
+        mock_config = {
+            "filters": ["^\\[DEPENDENCIES\\] Update Terraform"],
+            "enable_ai_confidence_score": False,
+            "enable_ai_automerge_action": False,
+            "disable_pr_comments": False,
+            "ai_repos": [],
+            "ai_provider": "github",
+            "ai_config": {
+                "github": {
+                    "api_base": "http://localhost:4141",
+                    "model": "claude-sonnet-4"
+                }
+            }
+        }
+        processor = PRProcessor(mock_client, mock_config)
 
         self.assertEqual(processor.github_client, mock_client)
 
@@ -41,7 +55,21 @@ class TestPRProcessorInit(unittest.TestCase):
     def test_regex_patterns_compilation(self):
         """Test that all regex patterns are properly compiled."""
         mock_client = Mock()
-        processor = PRProcessor(mock_client)
+        mock_config = {
+            "filters": ["^\\[DEPENDENCIES\\] Update Terraform"],
+            "enable_ai_confidence_score": False,
+            "enable_ai_automerge_action": False,
+            "disable_pr_comments": False,
+            "ai_repos": [],
+            "ai_provider": "github",
+            "ai_config": {
+                "github": {
+                    "api_base": "http://localhost:4141",
+                    "model": "claude-sonnet-4"
+                }
+            }
+        }
+        processor = PRProcessor(mock_client, mock_config)
 
         # Test each regex pattern with sample text
         test_cases = [
@@ -87,7 +115,21 @@ class TestCreatePRLists(unittest.TestCase):
 
     def setUp(self):
         self.mock_client = Mock()
-        self.processor = PRProcessor(self.mock_client)
+        self.mock_config = {
+            "filters": ["^\\[DEPENDENCIES\\] Update Terraform"],
+            "enable_ai_confidence_score": False,
+            "enable_ai_automerge_action": False,
+            "disable_pr_comments": False,
+            "ai_repos": [],
+            "ai_provider": "github",
+            "ai_config": {
+                "github": {
+                    "api_base": "http://localhost:4141",
+                    "model": "claude-sonnet-4"
+                }
+            }
+        }
+        self.processor = PRProcessor(self.mock_client, self.mock_config)
 
         self.sample_pr = {
             "number": 123,
@@ -318,7 +360,21 @@ class TestProcessPRs(unittest.TestCase):
 
     def setUp(self):
         self.mock_client = Mock()
-        self.processor = PRProcessor(self.mock_client)
+        self.mock_config = {
+            "filters": ["^\\[DEPENDENCIES\\] Update Terraform"],
+            "enable_ai_confidence_score": False,
+            "enable_ai_automerge_action": False,
+            "disable_pr_comments": False,
+            "ai_repos": [],
+            "ai_provider": "github",
+            "ai_config": {
+                "github": {
+                    "api_base": "http://localhost:4141",
+                    "model": "claude-sonnet-4"
+                }
+            }
+        }
+        self.processor = PRProcessor(self.mock_client, self.mock_config)
 
         self.sample_pr = {
             "number": 123,
@@ -479,7 +535,21 @@ class TestPRProcessorEdgeCases(unittest.TestCase):
 
     def setUp(self):
         self.mock_client = Mock()
-        self.processor = PRProcessor(self.mock_client)
+        self.mock_config = {
+            "filters": ["^\\[DEPENDENCIES\\] Update Terraform"],
+            "enable_ai_confidence_score": False,
+            "enable_ai_automerge_action": False,
+            "disable_pr_comments": False,
+            "ai_repos": [],
+            "ai_provider": "github",
+            "ai_config": {
+                "github": {
+                    "api_base": "http://localhost:4141",
+                    "model": "claude-sonnet-4"
+                }
+            }
+        }
+        self.processor = PRProcessor(self.mock_client, self.mock_config)
 
     def test_create_pr_lists_empty_input(self):
         """Test create_pr_lists with empty input."""
@@ -568,7 +638,21 @@ class TestPRProcessorIntegration(unittest.TestCase):
 
     def setUp(self):
         self.mock_client = Mock()
-        self.processor = PRProcessor(self.mock_client)
+        self.mock_config = {
+            "filters": ["^\\[DEPENDENCIES\\] Update Terraform"],
+            "enable_ai_confidence_score": False,
+            "enable_ai_automerge_action": False,
+            "disable_pr_comments": False,
+            "ai_repos": [],
+            "ai_provider": "github",
+            "ai_config": {
+                "github": {
+                    "api_base": "http://localhost:4141",
+                    "model": "claude-sonnet-4"
+                }
+            }
+        }
+        self.processor = PRProcessor(self.mock_client, self.mock_config)
 
     @patch("builtins.print")
     def test_full_workflow_typical_scenario(self, mock_print):

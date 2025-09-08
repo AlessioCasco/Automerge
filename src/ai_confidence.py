@@ -5,6 +5,7 @@ import re
 import json
 import logging
 import requests
+import urllib3
 from typing import Dict, Any, Optional, Tuple
 
 # Configure logging
@@ -12,12 +13,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Get log level from environment variable
-log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.getLogger().setLevel(getattr(logging, log_level, logging.INFO))
 logger = logging.getLogger(__name__)
 
 # Suppress SSL warnings for development
-import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Default timeout for API calls
@@ -57,14 +57,14 @@ class AIConfidenceCalculator:
         title = pr_data.get("title", "")
         body = pr_data.get("body", "")
         labels = [label["name"] for label in pr_data.get("labels", [])]
-        
+
         context = f"""PR Title: {title}
 PR Description: {body}
 Repository: {pr_data.get('head', {}).get('repo', {}).get('name', 'N/A')}
 Base Branch: {pr_data.get('base', {}).get('ref', 'N/A')}
 Head Branch: {pr_data.get('head', {}).get('ref', 'N/A')}
 Labels: {', '.join(labels) if labels else 'None'}"""
-        
+
         return context
 
     def _extract_terraform_plan(self, pr_data: Dict[str, Any], terraform_user: str = "tl-terraform") -> str:
@@ -82,15 +82,15 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             if not self.github_client:
                 logger.error("GitHub client not available for terraform plan extraction")
                 return ""
-            
+
             # Get the issue URL from PR data
             issue_url = pr_data.get("issue_url")
             if not issue_url:
                 return ""
-            
+
             # Get the last terraform plan from the specific user
             plan_output = self.github_client.get_last_terraform_plan(issue_url, terraform_user)
-            
+
             if plan_output:
                 logger.debug(f"📋 Found Terraform plan from {terraform_user}:")
                 logger.debug(f"   Plan length: {len(plan_output)} characters")
@@ -99,7 +99,7 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             else:
                 logger.debug(f"📋 No Terraform plan found from user {terraform_user}")
                 return ""
-                
+
         except Exception as e:
             logger.error(f"Error extracting Terraform plan: {e}")
             return ""
@@ -114,7 +114,7 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             Tuple of (AI response, metadata)
         """
         provider = self.ai_config.get("ai_provider", "github")
-        
+
         if provider == "github":
             return self._call_github_copilot_with_metadata(prompt)
         elif provider == "claude-code":
@@ -137,10 +137,10 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             github_config = self.ai_config.get("ai_config", {}).get("github", {})
             api_base = github_config.get("api_base", "http://localhost:4141")
             model = github_config.get("model", "claude-sonnet-4")
-            
+
             # Use Anthropic compatible endpoint via copilot-api proxy
             url = f"{api_base}/v1/messages"
-            
+
             payload = {
                 "model": model,
                 "max_tokens": 500,
@@ -151,56 +151,56 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                     }
                 ]
             }
-            
+
             # Use different headers for the proxy
             proxy_headers = {
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             }
-            
+
             # Debug logging
-            logger.debug(f"🤖 GitHub Copilot API Call Details:")
+            logger.debug("🤖 GitHub Copilot API Call Details:")
             logger.debug(f"   URL: {url}")
             logger.debug(f"   Model: {model}")
             logger.debug(f"   Headers: {proxy_headers}")
             logger.debug(f"   Payload: {json.dumps(payload, indent=2)}")
-            
+
             response = requests.post(
                 url,
                 headers=proxy_headers,
                 json=payload,
                 timeout=DEFAULT_TIMEOUT
             )
-            
+
             logger.debug(f"   Response Status: {response.status_code}")
             logger.debug(f"   Response Headers: {dict(response.headers)}")
-            
+
             if response.status_code == 200:
                 result = response.json()
                 logger.debug(f"   Response Body: {json.dumps(result, indent=2)}")
-                
+
                 # Extract content from Anthropic response format
-                content = result.get('content', [{}])[0].get('text', '')
+                content = result.get("content", [{}])[0].get("text", "")
                 logger.debug(f"   Extracted Content: {content}")
-                
+
                 # Log usage statistics if available
-                usage = result.get('usage', {})
+                usage = result.get("usage", {})
                 if usage:
                     logger.debug(f"   Usage: {usage}")
-                
+
                 metadata = {
                     "provider": "GitHub Copilot",
                     "model": model,
-                    "input_tokens": usage.get('input_tokens', 0),
-                    "output_tokens": usage.get('output_tokens', 0)
+                    "input_tokens": usage.get("input_tokens", 0),
+                    "output_tokens": usage.get("output_tokens", 0)
                 }
-                
+
                 return content, metadata
             else:
                 logger.error(f"GitHub Copilot API proxy error: {response.status_code} - {response.text}")
                 logger.debug(f"   Error Response: {response.text}")
                 return None, {"provider": "GitHub Copilot", "model": model, "input_tokens": 0, "output_tokens": 0}
-                
+
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error calling GitHub Copilot API proxy: {e}")
             return None, {"provider": "GitHub Copilot", "model": "unknown", "input_tokens": 0, "output_tokens": 0}
@@ -224,14 +224,14 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             api_base = claude_config.get("api_base", "https://api.anthropic.com")
             api_key = claude_config.get("api_key")
             model = claude_config.get("model", "claude-sonnet-4")
-            
+
             if not api_key:
                 logger.error("Claude Code API key not provided")
                 return None, {"provider": "Claude Code", "model": model, "input_tokens": 0, "output_tokens": 0}
-            
+
             # Use Claude Code API endpoint
             url = f"{api_base}/v1/messages"
-            
+
             payload = {
                 "model": model,
                 "max_tokens": 500,
@@ -242,7 +242,7 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                     }
                 ]
             }
-            
+
             # Use Claude Code headers
             claude_headers = {
                 "Content-Type": "application/json",
@@ -250,18 +250,18 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 "x-api-key": api_key,
                 "anthropic-version": "2023-06-01"
             }
-            
+
             # Check if we should disable SSL verification (for local development)
-            disable_ssl_verify = os.environ.get('DISABLE_SSL_VERIFY', 'false').lower() == 'true'
-            
+            disable_ssl_verify = os.environ.get("DISABLE_SSL_VERIFY", "false").lower() == "true"
+
             # Debug logging
-            logger.debug(f"🤖 Claude Code API Call Details:")
+            logger.debug("🤖 Claude Code API Call Details:")
             logger.debug(f"   URL: {url}")
             logger.debug(f"   Model: {model}")
             logger.debug(f"   Headers: {claude_headers}")
             logger.debug(f"   Payload: {json.dumps(payload, indent=2)}")
             logger.debug(f"   SSL Verify: {not disable_ssl_verify}")
-            
+
             response = requests.post(
                 url,
                 headers=claude_headers,
@@ -269,36 +269,36 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 timeout=DEFAULT_TIMEOUT,
                 verify=not disable_ssl_verify  # Disable SSL verification if environment variable is set
             )
-            
+
             logger.debug(f"   Response Status: {response.status_code}")
             logger.debug(f"   Response Headers: {dict(response.headers)}")
-            
+
             if response.status_code == 200:
                 result = response.json()
                 logger.debug(f"   Response Body: {json.dumps(result, indent=2)}")
-                
+
                 # Extract content from Claude response format
-                content = result.get('content', [{}])[0].get('text', '')
+                content = result.get("content", [{}])[0].get("text", "")
                 logger.debug(f"   Extracted Content: {content}")
-                
+
                 # Log usage statistics if available
-                usage = result.get('usage', {})
+                usage = result.get("usage", {})
                 if usage:
                     logger.debug(f"   Usage: {usage}")
-                
+
                 metadata = {
                     "provider": "Claude Code",
                     "model": model,
-                    "input_tokens": usage.get('input_tokens', 0),
-                    "output_tokens": usage.get('output_tokens', 0)
+                    "input_tokens": usage.get("input_tokens", 0),
+                    "output_tokens": usage.get("output_tokens", 0)
                 }
-                
+
                 return content, metadata
             else:
                 logger.error(f"Claude Code API error: {response.status_code} - {response.text}")
                 logger.debug(f"   Error Response: {response.text}")
                 return None, {"provider": "Claude Code", "model": model, "input_tokens": 0, "output_tokens": 0}
-                
+
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error calling Claude Code API: {e}")
             return None, {"provider": "Claude Code", "model": "unknown", "input_tokens": 0, "output_tokens": 0}
@@ -320,21 +320,21 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             # Look for pattern "SCORE: X% - EXPLANATION" followed by explanation
             score_pattern = r"SCORE:\s*(\d+)%\s*-\s*EXPLANATION\s*\n\s*(.+)"
             match = re.search(score_pattern, ai_response.strip(), re.DOTALL)
-            
+
             if match:
                 score = int(match.group(1))
                 explanation = match.group(2).strip()
                 return score, explanation
-            
+
             # Fallback: try pattern without "EXPLANATION" keyword
             score_pattern_fallback = r"SCORE:\s*(\d+)%\s*-\s*(.+)"
             match = re.search(score_pattern_fallback, ai_response.strip(), re.DOTALL)
-            
+
             if match:
                 score = int(match.group(1))
                 explanation = match.group(2).strip()
                 return score, explanation
-            
+
             # Fallback: try to extract just the number
             number_pattern = r"(\d+)%"
             match = re.search(number_pattern, ai_response)
@@ -348,14 +348,14 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                     explanation = explanation.replace("EXPLANATION", "").strip()
                     if explanation:
                         return score, explanation
-                
+
                 explanation = ai_response.strip()
                 return score, explanation
-            
+
             # Default fallback
             logger.warning(f"Could not parse AI response: {ai_response}")
             return 50, "Unable to parse AI response"
-            
+
         except (ValueError, AttributeError) as e:
             logger.error(f"Error parsing AI response: {e}")
             return 50, "Error parsing AI response"
@@ -370,38 +370,38 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             True if development environment, False otherwise
         """
         # Check branch name patterns
-        base_branch = pr_data.get('base', {}).get('ref', '').lower()
-        head_branch = pr_data.get('head', {}).get('ref', '').lower()
-        
+        base_branch = pr_data.get("base", {}).get("ref", "").lower()
+        head_branch = pr_data.get("head", {}).get("ref", "").lower()
+
         # Development branch patterns
         dev_patterns = [
-            r'dev',
-            r'development',
-            r'staging',
-            r'test',
-            r'feature/',
-            r'hotfix/',
+            r"dev",
+            r"development",
+            r"staging",
+            r"test",
+            r"feature/",
+            r"hotfix/",
         ]
-        
+
         # Production/protected branch patterns
         prod_patterns = [
-            r'main',
-            r'master',
-            r'prod',
-            r'production',
-            r'release/',
+            r"main",
+            r"master",
+            r"prod",
+            r"production",
+            r"release/",
         ]
-        
+
         # Check if base branch is production
         for pattern in prod_patterns:
             if re.search(pattern, base_branch):
                 return False
-        
+
         # Check if head branch is development
         for pattern in dev_patterns:
             if re.search(pattern, head_branch):
                 return True
-        
+
         # Default to False (conservative approach)
         return False
 
@@ -418,37 +418,31 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             # Extract context
             pr_context = self._extract_pr_context(pr_data)
             plan_output = self._extract_terraform_plan(pr_data)
-            
+
             # Determine environment
             is_dev_env = self._is_development_environment(pr_data)
-            
-            logger.debug(f"🔍 PR Analysis Context:")
+
+            logger.debug("🔍 PR Analysis Context:")
             logger.debug(f"   PR Title: {pr_data.get('title', 'N/A')}")
             logger.debug(f"   Repository: {pr_data.get('head', {}).get('repo', {}).get('name', 'N/A')}")
             logger.debug(f"   Base Branch: {pr_data.get('base', {}).get('ref', 'N/A')}")
             logger.debug(f"   Head Branch: {pr_data.get('head', {}).get('ref', 'N/A')}")
             logger.debug(f"   Environment: {'Development' if is_dev_env else 'Production/Protected'} (for auto-merge only)")
             logger.debug(f"   Plan Output: {plan_output[:200]}{'...' if len(plan_output) > 200 else ''}")
-            
+
             # Build prompt for AI - focus only on PR description, changelog, and plan output
-            prompt = f"""You are an expert DevOps engineer analyzing pull requests for automatic merging. 
+            prompt = f"""You are an expert DevOps engineer analyzing pull requests for automatic merging.
             Your task is to assess the risk level of changes and determine if they can be safely merged automatically.
-            
             Consider ONLY the following factors:
             1. PR description and title
             2. Changelog information (if linked or present in description)
             3. Terraform plan output
-            
             DO NOT consider the environment (development vs production) for the confidence score.
             The environment is only used to determine if auto-merge is allowed.
-            
             Analyze this pull request for automatic merging safety:
-            
             {pr_context}
-            
             Terraform Plan Output:
             {plan_output if plan_output else 'No plan output available'}
-            
             Based on the above information, assess the risk level and determine if this PR can be safely merged automatically.
             Consider:
             - Type of changes (provider updates, dependency updates, etc.)
@@ -456,32 +450,31 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             - Impact on infrastructure
             - Changelog information if available
             - Terraform plan output analysis
-            
             Respond with ONLY: "SCORE: X% - EXPLANATION"
             """
-            
-            logger.debug(f"📝 Generated Prompt:")
+
+            logger.debug("📝 Generated Prompt:")
             logger.debug(f"   Prompt Length: {len(prompt)} characters")
             logger.debug(f"   Prompt Preview: {prompt[:500]}{'...' if len(prompt) > 500 else ''}")
-            
+
             # Call AI and get metadata
             ai_response, metadata = self._call_ai_provider_with_metadata(prompt)
-            
+
             if ai_response:
-                logger.debug(f"✅ AI Response Received:")
+                logger.debug("✅ AI Response Received:")
                 logger.debug(f"   Response: {ai_response}")
-                
+
                 score, explanation = self._parse_ai_response(ai_response)
-                logger.debug(f"📊 Parsed Results:")
+                logger.debug("📊 Parsed Results:")
                 logger.debug(f"   Confidence Score: {score}%")
                 logger.debug(f"   Explanation: {explanation}")
-                
+
                 return score, explanation, is_dev_env, metadata
             else:
                 # Fallback logic when AI is unavailable
                 logger.warning("AI service unavailable, using fallback logic")
-                logger.debug(f"🔄 Using Fallback Logic")
-                
+                logger.debug("🔄 Using Fallback Logic")
+
                 fallback_score, fallback_explanation, fallback_is_dev = self._fallback_confidence_calculation(pr_data, plan_output, is_dev_env)
                 fallback_metadata = {
                     "provider": "fallback",
@@ -489,9 +482,9 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                     "input_tokens": 0,
                     "output_tokens": 0
                 }
-                
+
                 return fallback_score, fallback_explanation, fallback_is_dev, fallback_metadata
-                
+
         except Exception as e:
             logger.error(f"Error calculating confidence score: {e}")
             logger.debug(f"❌ Exception Details: {str(e)}")
@@ -517,52 +510,52 @@ Labels: {', '.join(labels) if labels else 'None'}"""
         # Base score starts at 50%
         score = 50
         explanation_parts = []
-        
+
         # Analyze PR title and description
         title = pr_data.get("title", "").lower()
         body = pr_data.get("body", "").lower()
-        
+
         # Check for dependency updates (usually safe)
         if any(keyword in title for keyword in ["dependencies", "dependency", "update", "bump"]):
             score += 20
             explanation_parts.append("Dependency update detected")
-        
+
         # Check for provider updates (usually safe)
         if any(keyword in title for keyword in ["provider", "terraform"]):
             score += 15
             explanation_parts.append("Provider update detected")
-        
+
         # Check for breaking changes in description
         if any(keyword in body for keyword in ["breaking", "breaking change", "deprecated", "removed"]):
             score -= 30
             explanation_parts.append("Breaking changes detected")
-        
+
         # Analyze Terraform plan output
         if plan_output:
             # Check for no changes (very safe)
             if "No changes" in plan_output:
                 score += 25
                 explanation_parts.append("No infrastructure changes")
-            
+
             # Check for destructive changes
             if "destroy" in plan_output.lower():
                 score -= 40
                 explanation_parts.append("Destructive changes detected")
-            
+
             # Check for resource additions (moderate risk)
             if "to add" in plan_output and "0 to add" not in plan_output:
                 score -= 10
                 explanation_parts.append("New resources being added")
-        
+
         # Ensure score is within 0-100 range
         score = max(0, min(100, score))
-        
+
         # Create explanation
         if explanation_parts:
             explanation = " - ".join(explanation_parts)
         else:
             explanation = "Standard risk assessment"
-        
+
         return score, explanation, is_dev_env
 
     def should_auto_merge(self, confidence_score: int, is_dev_env: bool, enable_auto_merge: bool) -> bool:

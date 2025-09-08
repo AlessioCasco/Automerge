@@ -78,11 +78,11 @@ def validate_config(config: Dict[str, Any]) -> None:
     if not config["github_user"]:
         raise ValueError("github_user cannot be empty")
 
-    if not config["repos"] or not isinstance(config["repos"], list):
-        raise ValueError("repos must be a non-empty list")
-
     if not config["filters"] or not isinstance(config["filters"], list):
         raise ValueError("filters must be a non-empty list")
+
+    if not isinstance(config["repos"], list):
+        raise ValueError("repos must be a list")
 
     # Validate that all repos are strings
     for i, repo in enumerate(config["repos"]):
@@ -113,7 +113,7 @@ def validate_config(config: Dict[str, Any]) -> None:
     if "ai_repos" in config:
         if not isinstance(config["ai_repos"], list):
             raise ValueError("ai_repos must be a list")
-        
+
         for i, repo in enumerate(config["ai_repos"]):
             if not isinstance(repo, str) or not repo.strip():
                 repo_type = type(repo).__name__
@@ -123,21 +123,21 @@ def validate_config(config: Dict[str, Any]) -> None:
     if config.get("enable_ai_confidence_score", False):
         if "ai_provider" not in config:
             raise ValueError("ai_provider is required when enable_ai_confidence_score is true")
-        
+
         if config["ai_provider"] not in ["github", "claude-code"]:
             raise ValueError("ai_provider must be either 'github' or 'claude-code'")
-        
+
         if "ai_config" not in config:
             raise ValueError("ai_config is required when enable_ai_confidence_score is true")
-        
+
         ai_config = config["ai_config"]
         provider = config["ai_provider"]
-        
+
         if provider not in ai_config:
             raise ValueError(f"ai_config must contain configuration for '{provider}'")
-        
+
         provider_config = ai_config[provider]
-        
+
         if provider == "github":
             if "api_base" not in provider_config:
                 raise ValueError("github config must contain 'api_base'")
@@ -160,17 +160,17 @@ def validate_config(config: Dict[str, Any]) -> None:
     if "test_prs" in config:
         if not isinstance(config["test_prs"], list):
             raise ValueError("test_prs must be a list")
-        
+
         for i, test_pr in enumerate(config["test_prs"]):
             if not isinstance(test_pr, dict):
                 raise ValueError(f"test_pr at index {i} must be a dictionary")
-            
+
             if "repo" not in test_pr or "pr_number" not in test_pr:
                 raise ValueError(f"test_pr at index {i} must contain 'repo' and 'pr_number' keys")
-            
+
             if not isinstance(test_pr["repo"], str) or not test_pr["repo"].strip():
                 raise ValueError(f"test_pr repo at index {i} must be a non-empty string")
-            
+
             if not isinstance(test_pr["pr_number"], int) or test_pr["pr_number"] <= 0:
                 raise ValueError(f"test_pr pr_number at index {i} must be a positive integer")
 
@@ -191,12 +191,12 @@ def load_and_validate_config(config_file: str) -> Dict[str, Any]:
     """
     config = read_config(config_file)
     validate_config(config)
-    
+
     # Override with environment variables if present
     if os.environ.get("ENABLE_AI_CONFIDENCE_SCORE"):
         config["enable_ai_confidence_score"] = os.environ.get("ENABLE_AI_CONFIDENCE_SCORE").lower() == "true"
-    
+
     if os.environ.get("ENABLE_AI_AUTOMERGE_ACTION"):
         config["enable_ai_automerge_action"] = os.environ.get("ENABLE_AI_AUTOMERGE_ACTION").lower() == "true"
-    
+
     return config

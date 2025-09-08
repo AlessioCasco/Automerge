@@ -48,13 +48,13 @@ def main():
         args = parser.parse_args()
 
         # Set logging level from CLI argument or environment variable
-        log_level = os.environ.get('LOG_LEVEL', args.log_level).upper()
+        log_level = os.environ.get("LOG_LEVEL", args.log_level).upper()
         logging.getLogger().setLevel(getattr(logging, log_level, logging.INFO))
-        
+
         # Configure logging format
         logging.basicConfig(
             level=getattr(logging, log_level, logging.INFO),
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
 
         # Load and validate configuration

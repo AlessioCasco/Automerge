@@ -56,12 +56,12 @@ class PRProcessor:
         """
         self.github_client = github_client
         self.config = config
-        
+
         # Initialize AI confidence calculator if enabled
         self.ai_calculator = None
         if config.get("enable_ai_confidence_score", False):
             self.ai_calculator = AIConfidenceCalculator(
-                config["access_token"], 
+                config["access_token"],
                 self.github_client,
                 config
             )
@@ -168,33 +168,30 @@ class PRProcessor:
             return
 
         print("\nProcessing test PRs for AI confidence score analysis\n")
-        
+
         for test_pr in test_prs:
             repo = test_pr["repo"]
             pr_number = test_pr["pr_number"]
-            
+
             print(f"Analyzing test PR #{pr_number} from {repo}")
-            
+
             # Get the specific PR
             try:
                 pr_url = f"{self.github_client.base_repos_url}{repo}/pulls/{pr_number}"
                 response = requests.get(
                     pr_url, headers=self.github_client.headers, timeout=DEFAULT_TIMEOUT)
-                
+
                 if response.status_code != 200:
                     print(f"Failed to fetch PR #{pr_number} from {repo}, skipping...")
                     continue
-                
+
                 pr_data = response.json()
-                
-                # Get the last comment
-                last_comment = self.github_client.get_last_comment(pr_data["issue_url"])
-                
+
                 # Add AI confidence score comment
                 self._add_confidence_score_comment(pr_data, None)
-                
+
                 print(f"✅ Successfully analyzed test PR #{pr_number} from {repo}")
-                
+
             except Exception as e:
                 print(f"❌ Error processing test PR #{pr_number} from {repo}: {str(e)}")
                 continue
@@ -212,16 +209,16 @@ class PRProcessor:
         try:
             # Calculate confidence score
             confidence_score, explanation, is_dev_env, metadata = self.ai_calculator.calculate_confidence_score(pr)
-            
+
             # Determine environment string
             environment = "Development" if is_dev_env else "Production/Protected"
-            
+
             # Check if auto-merge should be enabled
             enable_auto_merge = self.config.get("enable_ai_automerge_action", False)
             should_auto_merge = self.ai_calculator.should_auto_merge(confidence_score, is_dev_env, enable_auto_merge)
-            
+
             auto_merge_status = "✅ Enabled" if should_auto_merge else "❌ Disabled"
-            
+
             # Format comment with metadata
             comment = COMMENT_CONFIDENCE_SCORE_TEMPLATE.format(
                 score=confidence_score,
@@ -233,10 +230,10 @@ class PRProcessor:
                 input_tokens=metadata.get("input_tokens", 0),
                 output_tokens=metadata.get("output_tokens", 0)
             )
-            
+
             # Check if PR comments are disabled
             disable_comments = self.config.get("disable_pr_comments", False)
-            
+
             if disable_comments:
                 # Only print to terminal
                 print(f"\n🤖 AI Confidence Score Analysis for {format_pr_info(pr)}:")
@@ -246,14 +243,14 @@ class PRProcessor:
                 print(f"   Auto-merge Status: {auto_merge_status}")
                 print(f"   AI Provider: {metadata.get('provider', 'Unknown')} ({metadata.get('model', 'unknown')})")
                 print(f"   Token Usage: {metadata.get('input_tokens', 0)} input, {metadata.get('output_tokens', 0)} output")
-                print(f"   ---")
+                print("   ---")
                 print(f"   *This analysis was performed by {metadata.get('provider', 'Unknown')} AI to assess the safety of automatic merging.*")
             else:
                 # Add comment to PR
                 self.github_client.comment_pull_req([pr], comment, update=False)
-            
+
             print(f"{format_pr_info(pr)}: AI Confidence Score {confidence_score}% - {auto_merge_status}")
-            
+
         except Exception as e:
             # Fallback comment in case of error
             error_comment = COMMENT_CONFIDENCE_SCORE_ERROR.format(
@@ -263,24 +260,24 @@ class PRProcessor:
                 environment="Unknown",
                 auto_merge_status="❌ Disabled (Error)"
             )
-            
+
             # Check if PR comments are disabled
             disable_comments = self.config.get("disable_pr_comments", False)
-            
+
             if disable_comments:
                 # Only print to terminal
                 print(f"\n🤖 AI Confidence Score Analysis Error for {format_pr_info(pr)}:")
                 print(f"   Error: {str(e)}")
-                print(f"   Fallback Score: 50%")
-                print(f"   Explanation: Fallback calculation due to error")
-                print(f"   Environment: Unknown")
-                print(f"   Auto-merge Status: ❌ Disabled (Error)")
-                print(f"   ---")
-                print(f"   *AI analysis failed, using fallback logic.*")
+                print("   Fallback Score: 50%")
+                print("   Explanation: Fallback calculation due to error")
+                print("   Environment: Unknown")
+                print("   Auto-merge Status: ❌ Disabled (Error)")
+                print("   ---")
+                print("   *AI analysis failed, using fallback logic.*")
             else:
                 # Add comment to PR
                 self.github_client.comment_pull_req([pr], error_comment, update=False)
-            
+
             print(f"{format_pr_info(pr)}: AI Confidence Score Error - {str(e)}")
 
     def _add_ai_failure_comment(self, pr: Dict[str, Any], reason: str, details: str, recommendation: str) -> None:
@@ -294,16 +291,16 @@ class PRProcessor:
         """
         # Check if PR comments are disabled
         disable_comments = self.config.get("disable_pr_comments", False)
-        
+
         if disable_comments:
             # Only print to terminal
             print(f"\n🤖 AI Confidence Score Analysis Failed for {format_pr_info(pr)}:")
-            print(f"   Status: ❌ AI Analysis Failed")
+            print("   Status: ❌ AI Analysis Failed")
             print(f"   Reason: {reason}")
             print(f"   Details: {details}")
             print(f"   Recommendation: {recommendation}")
-            print(f"   ---")
-            print(f"   *AI analysis could not be performed due to the above issue. Please check the PR status and try again later.*")
+            print("   ---")
+            print("   *AI analysis could not be performed due to the above issue. Please check the PR status and try again later.*")
         else:
             # Add comment to PR
             failure_comment = COMMENT_CONFIDENCE_SCORE_AI_FAILURE.format(
@@ -312,7 +309,7 @@ class PRProcessor:
                 recommendation=recommendation
             )
             self.github_client.comment_pull_req([pr], failure_comment, update=False)
-        
+
         print(f"{format_pr_info(pr)}: AI Analysis Failed - {reason}")
 
     def process_prs(self, all_pulls: List[Dict[str, Any]], force: bool) -> None:
@@ -335,31 +332,31 @@ class PRProcessor:
 
         if pr_with_diffs:
             print("\nUnlocking PR\n")
-            
+
             # Process AI analysis for configured repositories
             ai_repos = self.config.get("ai_repos", [])
             enable_ai = self.config.get("enable_ai_confidence_score", False)
-            
+
             for pr in pr_with_diffs:
                 repo_name = pr["head"]["repo"]["name"]
-                
+
                 # Check if this repo is in AI repos list and AI is enabled
                 if repo_name in ai_repos and enable_ai and self.ai_calculator:
                     print(f"\n🤖 Processing AI analysis for {format_pr_info(pr)} (AI-enabled repo)")
-                    
+
                     try:
                         # Check if AI comment already exists
                         last_comment = self.github_client.get_last_comment(pr["issue_url"])
                         has_ai_comment = False
-                        
+
                         if last_comment and "AI Confidence Score Analysis" in last_comment.get("body", ""):
                             has_ai_comment = True
-                            print(f"   AI analysis already performed, skipping...")
-                        
+                            print("   AI analysis already performed, skipping...")
+
                         if not has_ai_comment:
                             # Get Terraform plan from comments
-                            terraform_plan = self.github_client.get_last_terraform_plan(pr["issue_url"])
-                            
+                            terraform_plan = self.github_client.get_last_terraform_plan(pr["url"])
+
                             if not terraform_plan:
                                 # No plan found
                                 self._add_ai_failure_comment(
@@ -371,14 +368,14 @@ class PRProcessor:
                             else:
                                 # Valid plan found - perform AI analysis
                                 confidence_score, explanation, is_dev_env, metadata = self.ai_calculator.calculate_confidence_score(pr)
-                                
+
                                 # Check if auto-merge should be enabled
                                 enable_auto_merge = self.config.get("enable_ai_automerge_action", False)
                                 should_auto_merge = self.ai_calculator.should_auto_merge(confidence_score, is_dev_env, enable_auto_merge)
-                                
+
                                 # Add AI comment
                                 self._add_confidence_score_comment(pr)
-                                
+
                                 # Auto-merge if conditions are met
                                 if should_auto_merge:
                                     print(f"   🚀 Auto-merging {format_pr_info(pr)} (100% confidence, dev environment)")
@@ -386,15 +383,15 @@ class PRProcessor:
                                     continue  # Skip standard unlock process
                                 else:
                                     print(f"   📋 Manual merge required for {format_pr_info(pr)} (confidence: {confidence_score}%, dev: {is_dev_env})")
-                    
+
                     except Exception as e:
                         print(f"   ❌ Error during AI analysis for {format_pr_info(pr)}: {str(e)}")
                         # Continue with standard unlock process
-                
+
                 # Standard unlock process (if not auto-merged)
                 self.github_client.multi_comments_pull_req(
                     [pr], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
-            
+
                 self.github_client.set_label_to_pull_request(
                     [pr], LABEL_AUTOMERGE_IGNORE)
 

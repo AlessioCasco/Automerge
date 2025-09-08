@@ -243,14 +243,13 @@ class TestValidateConfig(unittest.TestCase):
         self.assertIn("github_user cannot be empty", str(context.exception))
 
     def test_validate_config_empty_repos_list(self):
-        """Test validation with empty repos list."""
+        """Test validation with empty repos list - should be allowed."""
         config = self.valid_config.copy()
         config["repos"] = []
 
-        with self.assertRaises(ValueError) as context:
-            validate_config(config)
-
-        self.assertIn("repos must be a non-empty list", str(context.exception))
+        # Empty repos list should be allowed now
+        result = validate_config(config)
+        self.assertIsNone(result)  # validate_config returns None on success
 
     def test_validate_config_repos_not_list(self):
         """Test validation with repos not being a list."""
@@ -260,7 +259,7 @@ class TestValidateConfig(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             validate_config(config)
 
-        self.assertIn("repos must be a non-empty list", str(context.exception))
+        self.assertIn("repos must be a list", str(context.exception))
 
     def test_validate_config_empty_filters_list(self):
         """Test validation with empty filters list."""
