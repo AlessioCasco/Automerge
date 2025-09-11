@@ -219,7 +219,7 @@ class GitHubClient:
         return None
 
     def get_last_terraform_plan(self, pull_req_url: str, terraform_user: str = "tl-terraform") -> Optional[str]:
-        """Extract Terraform plan from GitHub comments by the terraform user.
+        """Extract Terraform plan from GitHub comments by the terraform user using improved logic.
 
         Args:
             pull_req_url: URL of the pull request
@@ -234,40 +234,131 @@ class GitHubClient:
         logger.debug(f"🔍 Extracting Terraform plan from comments for {pull_req_url}")
 
         try:
-            # Get comments from the PR
+            # Get comments from the PR (ordered from newest to oldest)
             comments = self.get_comments(pull_req_url)
 
             if not comments:
                 logger.debug("📋 No comments found for PR")
                 return None
 
-            # Look for comments from the terraform user that contain Terraform plans
-            terraform_plans = []
+            logger.debug(f"📋 Found {len(comments)} comments, searching for Terraform plan")
 
-            for comment in comments:
+            # Look for comments from the terraform user that contain Terraform plans
+            # Process comments from newest to oldest
+            for i, comment in enumerate(comments):
                 user_login = comment.get("user", {}).get("login", "")
                 comment_body = comment.get("body", "")
 
-                if user_login == terraform_user and self._is_terraform_plan_comment(comment_body):
-                    logger.debug(f"📋 Found Terraform plan comment from {terraform_user}")
-                    plan_content = self._extract_plan_from_comment(comment_body)
+                if user_login != terraform_user:
+                    continue
+
+                logger.debug(f"📋 Checking comment {i+1} from {terraform_user}")
+
+                # Check if this is a "Ran Plan for project" comment
+                if comment_body.startswith("Ran Plan for project:"):
+                    logger.debug("📋 Found 'Ran Plan for project' comment")
+
+                    # Check if it has continuation warning
+                    if "Warning: Output length greater than max comment size. Continued in next comment." in comment_body:
+                        logger.debug("📋 Plan has continuation warning, collecting continuation comments")
+                        # Collect continuation comments that come before this one
+                        plan_content = self._collect_plan_with_continuations(comments, i)
+                    else:
+                        logger.debug("📋 Single comment plan, extracting directly")
+                        # Single comment plan, extract directly
+                        plan_content = self._extract_plan_from_comment(comment_body)
+
                     if plan_content:
-                        terraform_plans.append(plan_content)
+                        logger.debug(f"📋 Found Terraform plan from {terraform_user}:")
+                        logger.debug(f"   Plan length: {len(plan_content)} characters")
+                        return plan_content
 
-            if terraform_plans:
-                # Combine all plans if multiple found
-                combined_plan = "\n\n".join(terraform_plans)
-                logger.debug(f"📋 Found Terraform plan from {terraform_user}:")
-                logger.debug(f"   Plan length: {len(combined_plan)} characters")
+                # Check if this is a "Continued plan output" comment
+                elif "Continued plan output from previous comment." in comment_body:
+                    logger.debug("📋 Found 'Continued plan output' comment")
 
-                return combined_plan
-            else:
-                logger.debug(f"📋 No Terraform plan comments found from {terraform_user}")
-                return None
+                    # Look backwards for the main "Ran Plan for project" comment
+                    plan_content = self._collect_plan_with_continuations(comments, i)
+
+                    if plan_content:
+                        logger.debug("📋 Found Terraform plan from continuation comments:")
+                        logger.debug(f"   Plan length: {len(plan_content)} characters")
+                        return plan_content
+
+            logger.debug(f"📋 No Terraform plan comments found from {terraform_user}")
+            return None
 
         except Exception as e:
             logger.error(f"Error extracting Terraform plan: {e}")
             return None
+
+    def _collect_plan_with_continuations(self, comments: List[Dict[str, Any]], start_index: int) -> str:
+        """Collect Terraform plan from main comment and its continuations.
+
+        Args:
+            comments: All comments sorted by creation date (newest first)
+            start_index: Index of the main plan comment or continuation comment
+
+        Returns:
+            Combined terraform plan text
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.debug(f"🔗 Collecting plan with continuations starting from index {start_index}")
+
+        plan_parts = []
+        main_comment_found = False
+
+        # Start from the given index and look backwards (older comments)
+        for i in range(start_index, len(comments)):
+            comment = comments[i]
+            comment_body = comment.get("body", "")
+            created_at = comment.get("created_at", "unknown")
+
+            logger.debug(f"   📋 Processing comment {i+1} from {created_at}")
+
+            # Check if this is the main "Ran Plan for project" comment
+            if comment_body.startswith("Ran Plan for project:"):
+                logger.debug("   ✅ Found main 'Ran Plan for project' comment")
+                main_comment_found = True
+
+                # Extract plan from this comment
+                plan_content = self._extract_plan_from_comment(comment_body)
+                if plan_content:
+                    plan_parts.append(plan_content)
+                    logger.debug(f"   📋 Extracted {len(plan_content)} characters from main comment")
+
+                # Stop here - we found the main comment
+                break
+
+            # Check if this is a continuation comment
+            elif "Continued plan output from previous comment." in comment_body:
+                logger.debug("   📋 Found continuation comment")
+
+                # Extract continuation content (remove the header)
+                continuation_content = comment_body.replace("Continued plan output from previous comment.", "").strip()
+                if continuation_content:
+                    plan_parts.append(continuation_content)
+                    logger.debug(f"   📋 Extracted {len(continuation_content)} characters from continuation")
+            else:
+                # If we find a non-continuation comment and haven't found main comment yet,
+                # this means we're looking at the wrong set of comments
+                logger.debug("   🛑 Found non-plan comment, stopping search")
+                break
+
+        if not main_comment_found:
+            logger.debug("   ❌ Main 'Ran Plan for project' comment not found")
+            return ""
+
+        # Reverse the order to get chronological order (oldest first)
+        plan_parts.reverse()
+
+        # Combine all parts
+        combined_plan = "\n".join(plan_parts)
+        logger.debug(f"🔗 Combined plan from {len(plan_parts)} parts, total length: {len(combined_plan)} characters")
+
+        return combined_plan
 
     def _is_terraform_plan_comment(self, comment_body: str) -> bool:
         """Check if a comment contains a Terraform plan.
