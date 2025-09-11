@@ -354,35 +354,26 @@ class PRProcessor:
                             print("   AI analysis already performed, skipping...")
 
                         if not has_ai_comment:
-                            # Get Terraform plan from comments
-                            terraform_plan = self.github_client.get_last_terraform_plan(pr["url"])
+                            # AI analysis will extract Terraform plan from comments automatically
+                            # No need to fetch plan separately since AIConfidenceCalculator handles it
 
-                            if not terraform_plan:
-                                # No plan found
-                                self._add_ai_failure_comment(
-                                    pr,
-                                    "No Terraform plan found",
-                                    "Atlantis has not yet generated a plan for this PR, or the plan has been deleted.",
-                                    "Wait for Atlantis to complete the plan or trigger a new plan manually."
-                                )
+                            # Perform AI analysis (it will extract plan from comments internally)
+                            confidence_score, explanation, is_dev_env, metadata = self.ai_calculator.calculate_confidence_score(pr)
+
+                            # Check if auto-merge should be enabled
+                            enable_auto_merge = self.config.get("enable_ai_automerge_action", False)
+                            should_auto_merge = self.ai_calculator.should_auto_merge(confidence_score, is_dev_env, enable_auto_merge)
+
+                            # Add AI comment
+                            self._add_confidence_score_comment(pr)
+
+                            # Auto-merge if conditions are met
+                            if should_auto_merge:
+                                print(f"   🚀 Auto-merging {format_pr_info(pr)} (100% confidence, dev environment)")
+                                self.github_client.merge_pull_req([pr])
+                                continue  # Skip standard unlock process
                             else:
-                                # Valid plan found - perform AI analysis
-                                confidence_score, explanation, is_dev_env, metadata = self.ai_calculator.calculate_confidence_score(pr)
-
-                                # Check if auto-merge should be enabled
-                                enable_auto_merge = self.config.get("enable_ai_automerge_action", False)
-                                should_auto_merge = self.ai_calculator.should_auto_merge(confidence_score, is_dev_env, enable_auto_merge)
-
-                                # Add AI comment
-                                self._add_confidence_score_comment(pr)
-
-                                # Auto-merge if conditions are met
-                                if should_auto_merge:
-                                    print(f"   🚀 Auto-merging {format_pr_info(pr)} (100% confidence, dev environment)")
-                                    self.github_client.merge_pull_req([pr])
-                                    continue  # Skip standard unlock process
-                                else:
-                                    print(f"   📋 Manual merge required for {format_pr_info(pr)} (confidence: {confidence_score}%, dev: {is_dev_env})")
+                                print(f"   📋 Manual merge required for {format_pr_info(pr)} (confidence: {confidence_score}%, dev: {is_dev_env})")
 
                     except Exception as e:
                         print(f"   ❌ Error during AI analysis for {format_pr_info(pr)}: {str(e)}")

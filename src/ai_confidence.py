@@ -68,7 +68,7 @@ Labels: {', '.join(labels) if labels else 'None'}"""
         return context
 
     def _extract_terraform_plan(self, pr_data: Dict[str, Any], terraform_user: str = "tl-terraform") -> str:
-        """Extract Terraform plan output from the latest plan by a specific user.
+        """Extract Terraform plan output using GitHubClient.
 
         Args:
             pr_data: Pull request data
@@ -88,16 +88,14 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             if not issue_url:
                 return ""
 
-            # Get the last terraform plan from the specific user
-            plan_output = self.github_client.get_last_terraform_plan(issue_url, terraform_user)
+            # Use GitHubClient to extract the plan
+            plan_content = self.github_client.get_last_terraform_plan(issue_url, terraform_user)
 
-            if plan_output:
-                logger.debug(f"📋 Found Terraform plan from {terraform_user}:")
-                logger.debug(f"   Plan length: {len(plan_output)} characters")
-                logger.debug(f"   Plan preview: {plan_output[:300]}{'...' if len(plan_output) > 300 else ''}")
-                return plan_output
+            if plan_content:
+                logger.debug(f"📋 Successfully extracted Terraform plan ({len(plan_content)} characters)")
+                return plan_content
             else:
-                logger.debug(f"📋 No Terraform plan found from user {terraform_user}")
+                logger.debug(f"📋 No Terraform plan found from {terraform_user}")
                 return ""
 
         except Exception as e:
@@ -538,7 +536,7 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 explanation_parts.append("No infrastructure changes")
 
             # Check for destructive changes
-            if "destroy" in plan_output.lower():
+            if "destroy" in plan_output.lower() or "update" in plan_output.lower() or "replace" in plan_output.lower():
                 score -= 40
                 explanation_parts.append("Destructive changes detected")
 
