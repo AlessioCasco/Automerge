@@ -160,8 +160,6 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             logger.debug("🤖 GitHub Copilot API Call Details:")
             logger.debug(f"   URL: {url}")
             logger.debug(f"   Model: {model}")
-            logger.debug(f"   Headers: {proxy_headers}")
-            logger.debug(f"   Payload: {json.dumps(payload, indent=2)}")
 
             response = requests.post(
                 url,
@@ -171,11 +169,9 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             )
 
             logger.debug(f"   Response Status: {response.status_code}")
-            logger.debug(f"   Response Headers: {dict(response.headers)}")
 
             if response.status_code == 200:
                 result = response.json()
-                logger.debug(f"   Response Body: {json.dumps(result, indent=2)}")
 
                 # Extract content from Anthropic response format
                 content = result.get("content", [{}])[0].get("text", "")
@@ -256,8 +252,6 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             logger.debug("🤖 Claude Code API Call Details:")
             logger.debug(f"   URL: {url}")
             logger.debug(f"   Model: {model}")
-            logger.debug(f"   Headers: {claude_headers}")
-            logger.debug(f"   Payload: {json.dumps(payload, indent=2)}")
             logger.debug(f"   SSL Verify: {not disable_ssl_verify}")
 
             response = requests.post(
@@ -269,11 +263,9 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             )
 
             logger.debug(f"   Response Status: {response.status_code}")
-            logger.debug(f"   Response Headers: {dict(response.headers)}")
 
             if response.status_code == 200:
                 result = response.json()
-                logger.debug(f"   Response Body: {json.dumps(result, indent=2)}")
 
                 # Extract content from Claude response format
                 content = result.get("content", [{}])[0].get("text", "")

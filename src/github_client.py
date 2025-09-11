@@ -259,14 +259,6 @@ class GitHubClient:
                 combined_plan = "\n\n".join(terraform_plans)
                 logger.debug(f"📋 Found Terraform plan from {terraform_user}:")
                 logger.debug(f"   Plan length: {len(combined_plan)} characters")
-                logger.debug(f"   Plan preview: {combined_plan[:300]}{'...' if len(combined_plan) > 300 else ''}")
-
-                # Stampa completa del piano Terraform estratto
-                print("\n🔍 TERRAFORM PLAN ESTRATTO DAI COMMENTI:")
-                print("=" * 80)
-                print(combined_plan)
-                print("=" * 80)
-                print(f"📊 Lunghezza totale: {len(combined_plan)} caratteri\n")
 
                 return combined_plan
             else:
