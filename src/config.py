@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
 import json
+import logging
 import os
 from typing import Dict, Any, Union
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 
 def read_config(config_file: str) -> Dict[str, Any]:
@@ -19,7 +23,7 @@ def read_config(config_file: str) -> Dict[str, Any]:
     """
     try:
         with open(config_file, encoding="utf-8") as f:
-            print(f"Attempting to open config file in {config_file}\n")
+            logger.info(f"Attempting to open config file in {config_file}")
             config = json.load(f)
             return config
 
@@ -48,7 +52,7 @@ def use_config(config: Dict[str, Any], key: str) -> Union[str, list, dict]:
         return config[key]
 
     except KeyError:
-        print(f'Error reading key "{key}" from config')
+        logger.error(f'Error reading key "{key}" from config')
         raise SystemExit(1) from None
 
 

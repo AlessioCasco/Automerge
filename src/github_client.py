@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 
 import json
+import logging
 import re
 import time
 from typing import Dict, List, Optional, Any, Union
 
 import requests
 from rich.console import Console
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 try:
     from .utils import (
@@ -63,19 +67,18 @@ class GitHubClient:
 
         # Check that we have at least one filter
         if not filters:
-            print("No filters to match, please provide at least one, exiting")
+            logger.error("No filters to match, please provide at least one, exiting")
             raise SystemExit(1)
 
         for repo in repos:
             pr_url = self.base_repos_url + repo + "/pulls?per_page=100"
 
-            print(f"Fetching all PR's from {repo}")
+            logger.info(f"Fetching all PR's from {repo}")
 
             response = requests.get(
                 pr_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
             if response.status_code != 200:
-                print(
-                    f"Failed to get pull request. \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(f"Failed to get pull request. \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
                 raise SystemExit(1)
 
             pull_requests = json.loads(response.text)
@@ -86,7 +89,7 @@ class GitHubClient:
                     if re.match(filter_pattern, pr["title"]):
                         dependency_prs.append(pr)
 
-        print("All pull requests fetched\n")
+        logger.info("All pull requests fetched")
         return dependency_prs
 
     def get_specific_pull_requests(self, test_prs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -108,7 +111,7 @@ class GitHubClient:
             pr_number = test_pr["pr_number"]
 
             pr_url = f"{self.base_repos_url}{repo}/pulls/{pr_number}"
-            print(f"Fetching specific PR #{pr_number} from {repo}")
+            logger.info(f"Fetching specific PR #{pr_number} from {repo}")
 
             response = requests.get(
                 pr_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
@@ -116,15 +119,14 @@ class GitHubClient:
             if response.status_code == 200:
                 pr_data = json.loads(response.text)
                 specific_prs.append(pr_data)
-                print(f"Successfully fetched PR #{pr_number} from {repo}")
+                logger.info(f"Successfully fetched PR #{pr_number} from {repo}")
             elif response.status_code == 404:
-                print(f"PR #{pr_number} not found in {repo}, skipping...")
+                logger.warning(f"PR #{pr_number} not found in {repo}, skipping...")
             else:
-                print(
-                    f"Failed to get PR #{pr_number} from {repo}. \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(f"Failed to get PR #{pr_number} from {repo}. \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
                 raise SystemExit(1)
 
-        print(f"Fetched {len(specific_prs)} specific pull requests\n")
+        logger.info(f"Fetched {len(specific_prs)} specific pull requests")
         return specific_prs
 
     def update_branch(self, pull_req_list: List[Dict[str, Any]]) -> None:
@@ -138,13 +140,12 @@ class GitHubClient:
         """
         for pull_req in pull_req_list:
             update_url = pull_req["url"] + "/update-branch"
-            print(f"Updating PR Number: {pull_req['number']} in repo {pull_req['head']['repo']['name']}")
+            logger.info(f"Updating PR Number: {pull_req['number']} in repo {pull_req['head']['repo']['name']}")
 
             response = requests.put(
                 update_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
             if response.status_code != 202:
-                print(
-                    f"Failed to update branch in pull request {pull_req['number']} in repo {pull_req['head']['repo']['name']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(f"Failed to update branch in pull request {pull_req['number']} in repo {pull_req['head']['repo']['name']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
                 raise SystemExit(1)
 
     def get_comments(self, pull_req_url: str) -> List[Dict[str, Any]]:
@@ -447,14 +448,13 @@ class GitHubClient:
             response = requests.get(
                 url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
             if response.status_code != 200:
-                print(
-                    f"Failed to get info for pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(f"Failed to get info for pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
                 return "unknown"
 
             data = json.loads(response.text)
             return data.get("mergeable_state", "unknown")
         except (requests.exceptions.RequestException, ValueError, KeyError) as e:
-            print(f"Error getting mergeable state: {e}")
+            logger.error(f"Error getting mergeable state: {e}")
             return "unknown"
 
     def is_approved(self, url: str) -> Optional[Union[bool, str]]:
@@ -469,8 +469,7 @@ class GitHubClient:
         response = requests.get(
             url + "/reviews", headers=self.headers, timeout=DEFAULT_TIMEOUT)
         if response.status_code != 200:
-            print(
-                f"Failed to get check if pull request is approved \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+            logger.error(f"Failed to get check if pull request is approved \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
             return None
 
         reviews = json.loads(response.text)
@@ -513,12 +512,11 @@ class GitHubClient:
             )
 
             if response.status_code != 200:
-                print(
-                    f"Failed to approve pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(f"Failed to approve pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
                 raise SystemExit(1)
-            print("PR Approved")
+            logger.info("PR Approved")
         except requests.exceptions.RequestException as e:
-            print(f"Network error approving pull request: {e}")
+            logger.error(f"Network error approving pull request: {e}")
             raise SystemExit(1) from e
 
     def comment_pull_req(
@@ -544,7 +542,7 @@ class GitHubClient:
 
             if update:
                 mergeable_state = self.get_mergeable_state(pr["url"])
-                print(f"\n*** PR {pr['number']} ***\n")
+                logger.info(f"*** PR {pr['number']} ***")
 
                 # Setting a timer for the mergeable state
                 timeout = time.time() + MERGEABLE_STATE_TIMEOUT
@@ -553,17 +551,16 @@ class GitHubClient:
                         mergeable_state = self.get_mergeable_state(pr["url"])
                         if time.time() > timeout:
                             skip_pr = True
-                            print("Timeout expired, moving on...")
+                            logger.warning("Timeout expired, moving on...")
                             break
                         time.sleep(1)
 
                 if skip_pr:
-                    print(
-                        f"PR {pr['number']}: Timeout expired waiting for state to be green at step 1, skipping")
+                    logger.warning(f"PR {pr['number']}: Timeout expired waiting for state to be green at step 1, skipping")
                     continue
 
                 if mergeable_state == "behind":
-                    print(f"PR {pr['number']} is behind, updating branch")
+                    logger.info(f"PR {pr['number']} is behind, updating branch")
                     self.update_branch([pr])
 
                 # Wait for all checks to pass
@@ -572,13 +569,12 @@ class GitHubClient:
                         mergeable_state = self.get_mergeable_state(pr["url"])
                         if time.time() > timeout:
                             skip_pr = True
-                            print("Timeout expired, moving on...")
+                            logger.warning("Timeout expired, moving on...")
                             break
                         time.sleep(4)
 
                 if skip_pr:
-                    print(
-                        f"PR {pr['number']}: Timeout expired waiting for state to be green at step 2, skipping")
+                    logger.warning(f"PR {pr['number']}: Timeout expired waiting for state to be green at step 2, skipping")
                     continue
 
             response = requests.post(
@@ -587,10 +583,9 @@ class GitHubClient:
                 headers=self.headers,
                 timeout=DEFAULT_TIMEOUT)
             if response.status_code != 201:
-                print(
-                    f"Failed to add comment to pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(f"Failed to add comment to pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
 
-            print(f"PR {pr['number']} Commented")
+            logger.info(f"PR {pr['number']} Commented")
 
     def multi_comments_pull_req(self, pull_req: List[Dict[str, Any]], comment1: str, comment2: str) -> None:
         """Append two comments to the PR.
@@ -622,10 +617,9 @@ class GitHubClient:
             )
 
             if response.status_code != 200:
-                print(
-                    f"Failed to set label {label} to pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(f"Failed to set label {label} to pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
 
-            print(f"PR {pr['number']} Label set")
+            logger.info(f"PR {pr['number']} Label set")
 
     def close_pull_requests(self, pull_req_list: List[Dict[str, Any]]) -> None:
         """Close the specified pull requests.
@@ -635,7 +629,7 @@ class GitHubClient:
         """
         for pull_req in pull_req_list:
             url = pull_req["issue_url"]
-            print(url)
+            logger.debug(url)
             response = requests.patch(
                 url,
                 headers=self.headers,
@@ -643,9 +637,9 @@ class GitHubClient:
                 timeout=DEFAULT_TIMEOUT,
             )
             if response.status_code != 200:
-                print(f"Failed to close PR: {pull_req['title']}")
+                logger.error(f"Failed to close PR: {pull_req['title']}")
             else:
-                print(f"Closed PR: {pull_req['title']}")
+                logger.info(f"Closed PR: {pull_req['title']}")
 
     def merge_pull_req(self, pull_req: List[Dict[str, Any]]) -> None:
         """Merge pull requests.
@@ -660,7 +654,7 @@ class GitHubClient:
             skip_pr = False
 
             mergeable_state = self.get_mergeable_state(pr["url"])
-            print(f"\n*** PR {pr['number']} ***\n")
+            logger.info(f"*** PR {pr['number']} ***")
 
             # Setting a timer for the mergeable state
             timeout = time.time() + MERGEABLE_STATE_TIMEOUT
@@ -669,29 +663,27 @@ class GitHubClient:
                     mergeable_state = self.get_mergeable_state(pr["url"])
                     if time.time() > timeout:
                         skip_pr = True
-                        print("Timeout expired, moving on...")
+                        logger.warning("Timeout expired, moving on...")
                         break
                     time.sleep(1)
 
             if skip_pr:
-                print(
-                    f"PR {pr['number']}: Timeout expired waiting for state to be green, skipping")
+                logger.warning(f"PR {pr['number']}: Timeout expired waiting for state to be green, skipping")
                 continue
 
             if mergeable_state == "behind":
-                print(f"PR {pr['number']} is behind, updating branch")
+                logger.info(f"PR {pr['number']} is behind, updating branch")
                 self.update_branch([pr])
 
             approval_status = self.is_approved(pr["url"])
             if not approval_status or approval_status == "Dismissed":
                 if approval_status == "Dismissed":
-                    print(
-                        f"PR {pr['number']} approval was dismissed/stale, re-approving...")
+                    logger.info(f"PR {pr['number']} approval was dismissed/stale, re-approving...")
                 else:
-                    print(f"PR {pr['number']} Needs approving...")
+                    logger.info(f"PR {pr['number']} Needs approving...")
                 self.approve(pr["url"])
             else:
-                print(f"PR {pr['number']} Approved already")
+                logger.info(f"PR {pr['number']} Approved already")
 
             timeout = time.time() + MERGEABLE_STATE_TIMEOUT
             with self.console.status("[bold green]Waiting for checks to pass..."):
@@ -699,16 +691,15 @@ class GitHubClient:
                     mergeable_state = self.get_mergeable_state(pr["url"])
                     if time.time() > timeout:
                         skip_pr = True
-                        print("Timeout expired, moving on...")
+                        logger.warning("Timeout expired, moving on...")
                         break
                     time.sleep(1)
 
             if skip_pr:
-                print(
-                    f"PR {pr['number']}: Timeout expired waiting for state to be green, skipping")
+                logger.warning(f"PR {pr['number']}: Timeout expired waiting for state to be green, skipping")
                 continue
 
-            print(f"PR {pr['number']} merging now")
+            logger.info(f"PR {pr['number']} merging now")
             response = requests.put(
                 pr["url"] + "/merge",
                 headers=self.headers,
@@ -717,11 +708,10 @@ class GitHubClient:
             )
 
             if response.status_code != 200:
-                print(
-                    f"Failed to merge pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(f"Failed to merge pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
                 raise SystemExit(1)
 
-            print(f"PR {pr['number']} merged!")
+            logger.info(f"PR {pr['number']} merged!")
 
     def process_dismissed_prs(self, dismissed_prs: List[Dict[str, Any]]) -> None:
         """Process dismissed PRs by re-approving them and checking if they can be merged.
@@ -730,10 +720,10 @@ class GitHubClient:
             dismissed_prs: List of dismissed pull requests to process
         """
         for pr in dismissed_prs:
-            print(f"\n*** Processing dismissed PR {pr['number']} ***\n")
+            logger.info(f"*** Processing dismissed PR {pr['number']} ***")
 
             # Re-approve the PR
-            print(f"PR {pr['number']} was dismissed, re-approving...")
+            logger.info(f"PR {pr['number']} was dismissed, re-approving...")
             self.approve(pr["url"])
 
             # Check if it has no changes and can be merged
@@ -747,13 +737,12 @@ class GitHubClient:
                 no_changes_pattern = re.compile(
                     r"No changes. Your infrastructure matches the configuration|Apply complete!")
                 if no_changes_pattern.search(last_comment["body"]):
-                    print(
-                        f"PR {pr['number']} has no changes after re-approval, merging...")
+                    logger.info(f"PR {pr['number']} has no changes after re-approval, merging...")
                     self.merge_pull_req([pr])
                 else:
-                    print(f"PR {pr['number']} still has changes after re-approval, will be processed in next run.")
+                    logger.info(f"PR {pr['number']} still has changes after re-approval, will be processed in next run.")
             else:
-                print(f"PR {pr['number']} has no comments after re-approval, will be processed in next run.")
+                logger.info(f"PR {pr['number']} has no comments after re-approval, will be processed in next run.")
 
     def approve_all_prs(self, all_pulls: List[Dict[str, Any]]) -> None:
         """Approve all not approved PRs matching the filters from the config.
@@ -768,6 +757,6 @@ class GitHubClient:
                 approved = True
 
         if approved:
-            print("All completed")
+            logger.info("All completed")
         else:
-            print("Nothing to be approved")
+            logger.info("Nothing to be approved")

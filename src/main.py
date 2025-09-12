@@ -5,6 +5,9 @@ import sys
 import os
 import logging
 
+# Set up logger
+logger = logging.getLogger(__name__)
+
 try:
     from .config import load_and_validate_config
     from .github_client import GitHubClient
@@ -76,13 +79,13 @@ def main():
         # Get test PRs if configured
         test_prs = config.get("test_prs", [])
         if test_prs:
-            print(f"Found {len(test_prs)} test PRs configured")
+            logger.info(f"Found {len(test_prs)} test PRs configured")
             test_pulls = github_client.get_specific_pull_requests(test_prs)
         else:
             test_pulls = []
 
         if args.approve_all:
-            print("Only Approving Now")
+            logger.info("Only Approving Now")
             github_client.approve_all_prs(all_pulls)
             sys.exit(0)
 
@@ -96,13 +99,13 @@ def main():
         # Process regular pull requests
         pr_processor.process_prs(all_pulls, args.force)
 
-        print("\nAll done, exiting\n")
+        logger.info("All done, exiting")
 
     except KeyboardInterrupt:
-        print("\n\nExiting by user request.\n")
+        logger.info("Exiting by user request")
         sys.exit(1)
     except Exception as e:
-        print(f"\nError: {e}")
+        logger.error(f"Error: {e}")
         sys.exit(1)
 
 
