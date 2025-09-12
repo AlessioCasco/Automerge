@@ -583,8 +583,16 @@ class TestCommentPullReq(unittest.TestCase):
         mock_state.return_value = "unknown"  # Always unknown, will timeout
 
         with patch("time.time") as mock_time:
-            # Simulate timeout
-            mock_time.side_effect = [0, MERGEABLE_STATE_TIMEOUT + 1]
+            # Use a function that returns incrementing values to avoid StopIteration
+            call_count = [0]
+            def time_side_effect():
+                call_count[0] += 1
+                if call_count[0] <= 5:
+                    return call_count[0]
+                else:
+                    return MERGEABLE_STATE_TIMEOUT + call_count[0]
+            
+            mock_time.side_effect = time_side_effect
 
             self.client.comment_pull_req(
                 [self.pull_req], "Test comment", update=True)
@@ -664,7 +672,16 @@ class TestMergePullReq(unittest.TestCase):
         mock_state.return_value = "unknown"  # Always unknown
 
         with patch("time.time") as mock_time:
-            mock_time.side_effect = [0, MERGEABLE_STATE_TIMEOUT + 1]
+            # Use a function that returns incrementing values to avoid StopIteration
+            call_count = [0]
+            def time_side_effect():
+                call_count[0] += 1
+                if call_count[0] <= 5:
+                    return call_count[0]
+                else:
+                    return MERGEABLE_STATE_TIMEOUT + call_count[0]
+            
+            mock_time.side_effect = time_side_effect
 
             self.client.merge_pull_req([self.pull_req])
 
