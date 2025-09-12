@@ -199,5 +199,4 @@ def load_and_validate_config(config_file: str) -> Dict[str, Any]:
     if os.environ.get("ENABLE_AI_AUTOMERGE_ACTION"):
         config["enable_ai_automerge_action"] = os.environ.get("ENABLE_AI_AUTOMERGE_ACTION").lower() == "true"
 
-    print(config)
     return config
