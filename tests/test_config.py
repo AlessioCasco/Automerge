@@ -130,13 +130,13 @@ class TestUseConfig(unittest.TestCase):
 
         self.assertEqual(context.exception.code, 1)
 
-    @patch("builtins.print")
-    def test_use_config_missing_key_error_message(self, mock_print):
+    @patch("config.logger.error")
+    def test_use_config_missing_key_error_message(self, mock_logger):
         """Test error message for missing key."""
         with self.assertRaises(SystemExit):
             use_config(self.config, "missing_key")
 
-        mock_print.assert_called_once_with(
+        mock_logger.assert_called_once_with(
             'Error reading key "missing_key" from config')
 
 

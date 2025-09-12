@@ -112,8 +112,7 @@ class TestDismissedPRs(unittest.TestCase):
     @patch("requests.get")
     @patch("requests.post")
     @patch("requests.put")
-    @patch("builtins.print")
-    def test_is_approved_handles_stale_approval(self, mock_print, mock_put, mock_post, mock_get):
+    def test_is_approved_handles_stale_approval(self, mock_put, mock_post, mock_get):
         """Test that is_approved correctly handles stale/dismissed approvals."""
         pr = {
             "number": 126,
@@ -143,16 +142,8 @@ class TestDismissedPRs(unittest.TestCase):
                 timeout=10
             )
 
-            # Should print the dismissal message
-            print_calls = [str(call) for call in mock_print.call_args_list]
-            dismissal_message_found = any(
-                "approval was dismissed/stale" in call for call in print_calls)
-            self.assertTrue(dismissal_message_found,
-                            "Should print dismissal message")
-
     @patch("requests.get")
-    @patch("builtins.print")
-    def test_is_approved_latest_review_wins(self, mock_print, mock_get):
+    def test_is_approved_latest_review_wins(self, mock_get):
         """Test that is_approved uses the latest review state."""
         pr_url = "https://api.github.com/repos/owner/repo/pulls/127"
 

@@ -12,6 +12,9 @@ from rich.console import Console
 # Set up logger
 logger = logging.getLogger(__name__)
 
+# Set up logger
+logger = logging.getLogger(__name__)
+
 try:
     from .utils import (
         DEFAULT_TIMEOUT,

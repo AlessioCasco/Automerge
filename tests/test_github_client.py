@@ -121,14 +121,14 @@ class TestGetPullRequests(unittest.TestCase):
         mock_get.assert_has_calls(expected_calls)
 
     @patch("requests.get")
-    @patch("builtins.print")
-    def test_get_pull_requests_no_filters(self, mock_print, mock_get):
+    @patch("github_client.logger.error")
+    def test_get_pull_requests_no_filters(self, mock_logger, mock_get):
         """Test get_pull_requests with no filters."""
         with self.assertRaises(SystemExit) as context:
             self.client.get_pull_requests(self.repos, [])
 
         self.assertEqual(context.exception.code, 1)
-        mock_print.assert_called_with(
+        mock_logger.assert_called_with(
             "No filters to match, please provide at least one, exiting")
 
     @patch("requests.get")
@@ -493,8 +493,8 @@ class TestApprove(unittest.TestCase):
         self.pr_url = "https://api.github.com/repos/owner/repo/pulls/123"
 
     @patch("requests.post")
-    @patch("builtins.print")
-    def test_approve_success(self, mock_print, mock_post):
+    @patch("github_client.logger.info")
+    def test_approve_success(self, mock_logger, mock_post):
         """Test successful PR approval."""
         mock_post.return_value = MockResponse({"id": 123}, 200)
 
@@ -506,11 +506,11 @@ class TestApprove(unittest.TestCase):
             json={"event": "APPROVE"},
             timeout=DEFAULT_TIMEOUT
         )
-        mock_print.assert_called_with("PR Approved")
+        mock_logger.assert_called_with("PR Approved")
 
     @patch("requests.post")
-    @patch("builtins.print")
-    def test_approve_api_error(self, mock_print, mock_post):
+    @patch("github_client.logger.info")
+    def test_approve_api_error(self, mock_logger, mock_post):
         """Test approve with API error."""
         mock_post.return_value = MockResponse({"message": "Forbidden"}, 403)
 
