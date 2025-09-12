@@ -334,14 +334,12 @@ class PRProcessor:
             print("\nUnlocking PR\n")
 
             # Process AI analysis for configured repositories
-            ai_repos = self.config.get("ai_repos", [])
             enable_ai = self.config.get("enable_ai_confidence_score", False)
 
             for pr in pr_with_diffs:
-                repo_name = pr["head"]["repo"]["name"]
 
                 # Check if this repo is in AI repos list and AI is enabled
-                if repo_name in ai_repos and enable_ai and self.ai_calculator:
+                if enable_ai and self.ai_calculator:
                     print(f"\n🤖 Processing AI analysis for {format_pr_info(pr)} (AI-enabled repo)")
 
                     try:

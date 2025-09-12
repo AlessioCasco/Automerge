@@ -109,16 +109,6 @@ def validate_config(config: Dict[str, Any]) -> None:
         if not isinstance(config["disable_pr_comments"], bool):
             raise ValueError("disable_pr_comments must be a boolean")
 
-    # Validate AI repos configuration
-    if "ai_repos" in config:
-        if not isinstance(config["ai_repos"], list):
-            raise ValueError("ai_repos must be a list")
-
-        for i, repo in enumerate(config["ai_repos"]):
-            if not isinstance(repo, str) or not repo.strip():
-                repo_type = type(repo).__name__
-                raise ValueError(f"AI repository at index {i} must be a non-empty string, found: {repo_type}")
-
     # Validate AI provider configuration if AI is enabled
     if config.get("enable_ai_confidence_score", False):
         if "ai_provider" not in config:

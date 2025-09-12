@@ -31,6 +31,7 @@ Automerge (for now) works only with [github](github.com) repos and [atlantis](ru
   ],
   "enable_ai_confidence_score" : false,
   "enable_ai_automerge_action" : false,
+  "disable_pr_comments" : false,
   "ai_provider" : "github",
   "ai_config" : {
     "github" : {
@@ -42,7 +43,8 @@ Automerge (for now) works only with [github](github.com) repos and [atlantis](ru
       "api_key" : "your_anthropic_api_key_here",
       "model" : "claude-3-5-sonnet-20241022"
     }
-  }
+  },
+  "test_prs" : []
 }
 ```
 
@@ -66,14 +68,10 @@ Automerge (for now) works only with [github](github.com) repos and [atlantis](ru
   * When enabled, AI confidence score analysis is printed to terminal instead of being posted as PR comments.
   * Useful for testing or when you want to avoid cluttering PRs with comments.
   * AI analysis is still performed and logged to terminal.
-* `repos`: List of repositories to process for standard automerge (required).
+* `repos`: List of repositories to process for automerge and AI analysis (required).
   * These repositories are processed for standard merge and planning logic.
-  * Can be empty to disable standard processing while keeping AI analysis.
-  * When empty, prints "No repositories configured, skipping pull request processing".
-* `ai_repos`: List of repositories to process with AI analysis (optional).
-  * These repositories are processed with AI analysis when PRs have diffs.
-  * AI analysis is performed during the standard processing cycle.
-  * Useful for repositories that need AI-powered confidence scoring.
+  * If `enable_ai_confidence_score` is enabled, AI analysis is performed for these repositories when PRs have diffs.
+  * Can be empty to disable all processing.
 * `ai_provider`: Choose the AI provider for confidence score calculation (default: "github").
   * Options: "github" (GitHub Copilot via proxy) or "claude-code" (Claude Code direct API).
   * Required when `enable_ai_confidence_score` is enabled.
@@ -81,7 +79,7 @@ Automerge (for now) works only with [github](github.com) repos and [atlantis](ru
   * **For GitHub Copilot**: Requires `api_base` (proxy URL) and `model` (model name).
   * **For Claude Code**: Requires `api_base` (API URL), `api_key` (Anthropic API key), and `model` (model name).
 * `test_prs`: List of specific PRs to analyze for AI confidence score testing (optional).
-  * Each test PR should have `repo` (string) and `pr_number` (integer) fields.
+  * Each test PR should be formatted as a dictionary with `repo` (string) and `pr_number` (integer) fields.
   * These PRs are analyzed regardless of their merge status when AI is enabled.
   * Useful for testing AI features on specific PRs.
 
@@ -144,7 +142,7 @@ Automerge includes an AI-powered feature that analyzes pull requests to determin
    - Labels
    - Terraform plan output from comments
 
-2. **AI Analysis**: GitHub Copilot analyzes the PR context and provides a confidence score with explanation
+2. **AI Analysis**: GitHub Copilot or Claude Code (setup) analyzes the PR context and provides a confidence score with explanation
 
 3. **Environment Detection**: The system determines if the PR targets a development environment based on branch patterns
 
@@ -162,21 +160,21 @@ Automerge includes an AI-powered feature that analyzes pull requests to determin
 
 ### AI Repository Processing
 
-The tool now supports AI analysis for specific repositories during the standard processing cycle:
+The tool supports AI analysis for repositories specified in the `repos` list during the standard processing cycle:
 
-1. **Standard Processing**: All repositories are processed normally
+1. **Standard Processing**: All repositories in the `repos` list are processed normally
    - PRs are categorized based on their state
    - Standard merge and planning logic applies
 
-2. **AI Analysis**: For repositories in the `ai_repos` list, when PRs have diffs:
+2. **AI Analysis**: When `enable_ai_confidence_score` is enabled and PRs have diffs:
    - AI confidence score analysis is performed
-   - Auto-merge is applied if conditions are met (100% confidence + dev environment)
+   - Auto-merge is applied if conditions are met (100% confidence + dev environment + `enable_ai_automerge_action` enabled)
    - Robust error handling for various failure scenarios
 
 3. **Integration**: AI analysis is seamlessly integrated into the existing workflow
    - No separate processing cycles
    - No additional wait times
-   - Maintains existing behavior for non-AI repositories
+   - Maintains existing behavior when AI features are disabled
 
 ### AI Failure Handling
 
@@ -259,181 +257,6 @@ The system will:
 5. Combine all plan parts in chronological order
 6. Remove continuation headers for clean output
 
-### Empty Lists Handling
-
-The system gracefully handles empty repository lists:
-
-#### Empty `repos` List
-```json
-{
-  "repos": [],
-  "ai_repos": ["terraform-ops", "terraform-k8s"]
-}
-```
-
-**Behavior:**
-- ✅ **Standard Processing**: Skipped (no repositories to process)
-- ✅ **AI Processing**: Continues for repositories in `ai_repos`
-- ✅ **Test PRs**: Still processed if configured
-- ✅ **Message**: "No repositories configured, skipping pull request processing"
-
-#### Empty `ai_repos` List
-```json
-{
-  "repos": ["terraform-vault", "terraform-aws"],
-  "ai_repos": []
-}
-```
-
-**Behavior:**
-- ✅ **Standard Processing**: Continues normally
-- ✅ **AI Processing**: Skipped (no AI repositories configured)
-- ✅ **Test PRs**: Still processed if configured
-
-#### Both Lists Empty
-```json
-{
-  "repos": [],
-  "ai_repos": []
-}
-```
-
-**Behavior:**
-- ✅ **Standard Processing**: Skipped
-- ✅ **AI Processing**: Skipped
-- ✅ **Test PRs**: Still processed if configured
-- ✅ **Use Case**: Useful for testing specific PRs only
-
-### Terraform Plan Extraction
-
-The system now extracts Terraform plans from GitHub status checks instead of PR comments. This approach is more reliable and provides access to complete plan information.
-
-#### How It Works
-
-1. **PR Details Fetch**: The system fetches PR details from the GitHub PR endpoint (e.g., `https://api.github.com/repos/TrueLayer/terraform-ops/pulls/23750`)
-   - **URL Support**: Also supports issues URLs (e.g., `https://api.github.com/repos/TrueLayer/terraform-ops/issues/23724`) which are automatically converted to pulls URLs
-2. **Statuses URL Extraction**: Extracts `statuses_url` field from the PR data response
-3. **Status Checks Fetch**: Makes a second API call to the `statuses_url` to get the list of status checks
-4. **Context Filtering**: Filters status checks for contexts starting with `atlantis/plan:` (note the colon)
-5. **Environment Extraction**: Extracts environment and project information from the context element after the colon
-6. **Multiple Plans Support**: Processes multiple `atlantis/plan:` status checks (one per project/environment)
-7. **Atlantis URL Fetching**: Each status check contains a `target_url` pointing to the Atlantis job page
-8. **Plan Extraction**: Fetches the Atlantis job page and extracts Terraform plan content from HTML
-9. **Plan Combination**: Combines all plans from different projects/environments with environment information
-
-#### Status Check Contexts
-
-The system looks for status checks with contexts starting with `atlantis/plan:` (note the colon):
-
-- `atlantis/plan:dev` - Development environment plan
-- `atlantis/plan:prod` - Production environment plan  
-- `atlantis/plan:project-dev` - Specific project in development environment
-- `atlantis/plan:project-prod` - Specific project in production environment
-- `atlantis/plan:staging` - Staging environment plan
-
-#### Environment Detection
-
-The system automatically detects environment and project information from the context element:
-
-- **Environment Detection**: 
-  - `dev`, `development`, `staging`, `test` → `development`
-  - `prod`, `production`, `live` → `production`
-  - Unknown patterns → defaults to `development`
-
-- **Project Extraction**: 
-  - Extracts project name by removing environment indicators
-  - Example: `project-dev` → project: `project`, environment: `development`
-
-#### URL Format Support
-
-The system supports both PR and issues URLs:
-
-**PR URLs** (preferred):
-```
-https://api.github.com/repos/TrueLayer/terraform-ops/pulls/23750
-```
-
-**Issues URLs** (automatically converted):
-```
-https://api.github.com/repos/TrueLayer/terraform-ops/issues/23724
-→ https://api.github.com/repos/TrueLayer/terraform-ops/pulls/23724
-```
-
-#### Atlantis URL Format
-
-Status checks contain `target_url` fields pointing to Atlantis job pages:
-```
-https://atlantis.truelayer.cloud/jobs/58c5a09b-f21c-4801-8afb-2d0678623e63
-```
-
-#### Plan Extraction Patterns
-
-The system extracts Terraform plans from Atlantis HTML using multiple patterns:
-
-1. **`<pre>` Tags**: Looks for Terraform plans in `<pre>` HTML tags
-2. **`<div>` Tags**: Searches for plans in `<div>` elements with plan-related classes
-3. **Plan Summary**: Identifies plans by the summary pattern `Plan: X to add, Y to change, Z to destroy.`
-
-#### Combined Plan Format
-
-When multiple plans are found, they are combined with detailed environment information:
-
-```
-=== Terraform Plan: dev ===
-Environment: development
-Project: dev
-Context: atlantis/plan:dev
-==================================================
-Terraform will perform the following actions:
-
-# aws_s3_bucket.dev-example will be created
-+ resource "aws_s3_bucket" "dev-example" {
-    + bucket = "dev-example-bucket"
-    + id     = "dev-example-bucket"
-  }
-
-Plan: 1 to add, 0 to change, 0 to destroy.
-==================================================
-=== End Plan: dev ===
-
-=== Terraform Plan: project-dev ===
-Environment: development
-Project: project
-Context: atlantis/plan:project-dev
-==================================================
-[Terraform plan content for project in dev environment]
-==================================================
-=== End Plan: project-dev ===
-```
-
-#### Advantages of Status Check Approach
-
-- **Reliability**: Status checks are more reliable than comment parsing
-- **Completeness**: Access to full plan information from Atlantis
-- **Multiple Projects**: Support for multiple projects/environments in a single PR
-- **Real-time**: Status checks are updated in real-time as plans complete
-- **Structured Data**: More structured approach than HTML comment parsing
-
-### Example Plan Detection
-
-```bash
-# Test Terraform plan extraction
-python test_terraform_plan.py
-```
-
-This will show:
-- Plan length and preview
-- Detection of continuation patterns
-- Debug information if no plan is found
-
-For a PR like [TrueLayer/terraform-ops#23680](https://github.com/TrueLayer/terraform-ops/pull/23680):
-
-- **Type**: Provider update
-- **Changes**: Adding new S3 bucket field (non-breaking)
-- **Environment**: Development
-- **Confidence Score**: 100%
-- **Result**: Auto-merge enabled
-
 ### Test PRs Configuration
 
 You can specify specific PRs for AI testing in your configuration:
@@ -453,7 +276,7 @@ You can specify specific PRs for AI testing in your configuration:
 }
 ```
 
-These PRs will be analyzed for AI confidence scores regardless of their merge status, making them perfect for testing the AI functionality.
+These PRs will be analyzed for AI confidence scores regardless of their merge status for testing the AI functionality.
 
 ### Error Handling
 
@@ -472,29 +295,9 @@ Run the AI feature tests:
 python -m unittest tests.test_ai_confidence -v
 ```
 
-Or test the complete functionality:
+## Usage Examples
 
-```bash
-python test_ai_example.py
-```
-
-### Testing Test PRs Feature
-
-Run the test PRs feature tests:
-
-```bash
-python -m unittest tests.test_test_prs -v
-```
-
-Or test the complete functionality:
-
-```bash
-python test_test_prs_example.py
-```
-
-## Esempi di Utilizzo
-
-### Configurazione Completa con AI Integrato
+### Complete Configuration with AI Integration
 
 ```json
 {
@@ -514,10 +317,6 @@ python test_test_prs_example.py
   "enable_ai_confidence_score": true,
   "enable_ai_automerge_action": true,
   "disable_pr_comments": false,
-  "ai_repos": [
-    "terraform-ops",
-    "terraform-k8s"
-  ],
   "ai_provider": "claude-code",
   "ai_config": {
     "claude-code": {
@@ -529,229 +328,30 @@ python test_test_prs_example.py
 }
 ```
 
-### Flusso di Esecuzione Integrato
+### When to use `disable_pr_comments: true`
+- **Testing**: During development and testing of AI features
+- **Debugging**: To analyze AI output without cluttering PRs
+- **Development environments**: Where you don't want permanent comments on PRs
+- **Batch analysis**: When analyzing many PRs and only wanting terminal results
 
-```
-📊 Processing all repositories...
+### When to use `disable_pr_comments: false` (default)
+- **Production**: When you want AI analysis to be visible to teams
+- **Collaboration**: When other developers need to see AI analysis
+- **Audit**: When you want to track AI decisions in PRs
+- **Transparency**: When you want auto-merge decisions to be documented
 
-🔍 Analyzing PRs in terraform-vault...
-   - PR 123: No changes detected → Ready for merge
-   - PR 124: Has diffs → Standard unlock process
+## Configuration Options Summary
 
-🔍 Analyzing PRs in terraform-aws...
-   - PR 125: No comments → Triggering plan
-   - PR 126: Error in plan → Triggering plan
+The tool now supports the following main configuration options:
 
-🔍 Analyzing PRs in terraform-ops (AI-enabled)...
-   - PR 127: Has diffs → AI analysis triggered
-     🤖 Processing AI analysis for PR 127 in repo terraform-ops (AI-enabled repo)
-     📋 Manual merge required for PR 127 (confidence: 85%, dev: false)
-     → Standard unlock process
+- **`enable_ai_confidence_score`**: Enables AI analysis for repositories in the `repos` list when PRs have diffs
+- **`enable_ai_automerge_action`**: Enables automatic merging for PRs with 100% confidence in development environments 
+- **`disable_pr_comments`**: When enabled, AI analysis is printed to console instead of posted as PR comments
+- **`test_prs`**: Allows testing the tool on specific PRs specified as dictionaries with `{"repo": "", "pr_number": ""}`
+- **`ai_provider`**: Chooses which AI provider to use (github or claude-code)
+- **`ai_config`**: Contains configurations for the supported AI engines
 
-🔍 Analyzing PRs in terraform-k8s (AI-enabled)...
-   - PR 128: Has diffs → AI analysis triggered
-     🤖 Processing AI analysis for PR 128 in repo terraform-k8s (AI-enabled repo)
-     🚀 Auto-merging PR 128 (100% confidence, dev environment)
-     → Auto-merge completed, skip standard unlock
-
-✅ Processing completed
-```
-
-### Logica di Integrazione
-
-1. **Categorizzazione Standard**
-   - Tutte le PR vengono categorizzate normalmente
-   - `pr_with_diffs`: PR con cambiamenti che necessitano review
-
-2. **AI Analysis per Repo Configurati**
-   - Solo per repo in `ai_repos` e quando `enable_ai_confidence_score: true`
-   - Controllo se AI comment già esistente (evita duplicati)
-   - Recupero piano Terraform dai commenti
-
-3. **Validazione Piano**
-   - **Nessun piano**: Commento di errore AI
-   - **Piano in corso**: Commento di errore AI
-   - **Lock conflict**: Commento di errore AI
-   - **Errori piano**: Commento di errore AI
-   - **Piano valido**: Analisi AI
-
-4. **Auto-Merge Decision**
-   - **100% confidence + ambiente dev**: Auto-merge immediato
-   - **Altri casi**: Standard unlock process
-
-### Vantaggi della Nuova Architettura
-
-1. **Integrazione Seamless**
-   - Nessun ciclo separato
-   - Nessun tempo di attesa aggiuntivo
-   - Mantiene comportamento esistente per repo non-AI
-
-2. **Efficienza**
-   - Processing singolo per tutte le PR
-   - AI analysis solo quando necessario
-   - Evita duplicazione di analisi
-
-3. **Flessibilità**
-   - Configurazione per repo specifici
-   - Attivazione/disattivazione per ambiente
-   - Fallback graceful su errori
-
-4. **Robustezza**
-   - Gestione errori dettagliata
-   - Continuità servizio anche con problemi AI
-   - Logging completo per debugging
-
-### Messaggi di Output
-
-#### AI Analysis Avviata
-```
-🤖 Processing AI analysis for PR 127 in repo terraform-ops (AI-enabled repo)
-```
-
-#### Auto-Merge Eseguito
-```
-🚀 Auto-merging PR 128 (100% confidence, dev environment)
-```
-
-#### Manual Merge Richiesto
-```
-📋 Manual merge required for PR 127 (confidence: 85%, dev: false)
-```
-
-#### Errore AI
-```
-❌ Error during AI analysis for PR 127: Network timeout
-```
-
-### Casi d'Uso
-
-#### Ambiente di Sviluppo
-```json
-{
-  "enable_ai_automerge_action": true,
-  "ai_repos": ["terraform-ops", "terraform-k8s"],
-  "disable_pr_comments": true
-}
-```
-
-#### Ambiente di Produzione
-```json
-{
-  "enable_ai_automerge_action": false,
-  "ai_repos": ["terraform-ops"],
-  "disable_pr_comments": false
-}
-```
-
-#### Testing
-```json
-{
-  "enable_ai_confidence_score": true,
-  "enable_ai_automerge_action": false,
-  "ai_repos": ["terraform-ops"],
-  "test_prs": [
-    {"repo": "terraform-ops", "pr_number": 23680}
-  ]
-}
-```
-
-### Disabilitazione Commenti PR
-
-Il parametro `disable_pr_comments` permette di controllare dove viene mostrata l'analisi AI:
-
-#### Con commenti abilitati (comportamento predefinito)
-```json
-{
-  "enable_ai_confidence_score": true,
-  "disable_pr_comments": false,
-  "ai_provider": "claude-code"
-}
-```
-
-**Risultato**: L'analisi AI viene postata come commento sulla PR e stampata sul terminale.
-
-#### Con commenti disabilitati
-```json
-{
-  "enable_ai_confidence_score": true,
-  "disable_pr_comments": true,
-  "ai_provider": "claude-code"
-}
-```
-
-**Risultato**: L'analisi AI viene stampata solo sul terminale, nessun commento viene aggiunto alla PR.
-
-#### Output del Terminale con Commenti Disabilitati
-```
-🤖 AI Confidence Score Analysis for PR 123 in repo terraform-ops:
-   Confidence Score: 85%
-   Explanation: This is a safe update to the Terraform provider that only adds new fields without breaking changes
-   Environment: Development
-   Auto-merge Status: ❌ Disabled
-   AI Provider: Claude Code (claude-sonnet-4)
-   Token Usage: 150 input, 75 output
-   ---
-   *This analysis was performed by Claude Code AI to assess the safety of automatic merging.*
-PR 123 in repo terraform-ops: AI Confidence Score 85% - ❌ Disabled
-```
-
-### Messaggi di Errore AI
-
-#### Nessun Piano Trovato
-```
-🤖 AI Confidence Score Analysis Failed for PR 128 in repo terraform-ops:
-   Status: ❌ AI Analysis Failed
-   Reason: No Terraform plan found
-   Details: Atlantis has not yet generated a plan for this PR, or the plan has been deleted.
-   Recommendation: Wait for Atlantis to complete the plan or trigger a new plan manually.
-   ---
-   *AI analysis could not be performed due to the above issue. Please check the PR status and try again later.*
-```
-
-#### Piano in Corso
-```
-🤖 AI Confidence Score Analysis Failed for PR 129 in repo terraform-ops:
-   Status: ❌ AI Analysis Failed
-   Reason: Plan still in progress
-   Details: Atlantis is still running the plan for this PR.
-   Recommendation: Wait for the plan to complete before AI analysis can be performed.
-   ---
-   *AI analysis could not be performed due to the above issue. Please check the PR status and try again later.*
-```
-
-#### Conflitto di Lock
-```
-🤖 AI Confidence Score Analysis Failed for PR 130 in repo terraform-k8s:
-   Status: ❌ AI Analysis Failed
-   Reason: Lock conflict detected
-   Details: Another PR has acquired the lock for this project.
-   Recommendation: Wait for the other PR to complete or unlock the project manually.
-   ---
-   *AI analysis could not be performed due to the above issue. Please check the PR status and try again later.*
-```
-
-#### Errore nel Piano
-```
-🤖 AI Confidence Score Analysis Failed for PR 132 in repo terraform-ops:
-   Status: ❌ AI Analysis Failed
-   Reason: Plan error detected
-   Details: The Terraform plan contains errors that need to be resolved.
-   Recommendation: Fix the Terraform configuration issues and re-run the plan.
-   ---
-   *AI analysis could not be performed due to the above issue. Please check the PR status and try again later.*
-```
-
-### Quando usare `disable_pr_comments: true`
-- **Testing**: Durante lo sviluppo e test delle funzionalità AI
-- **Debugging**: Per analizzare l'output AI senza cluttering le PR
-- **Ambienti di sviluppo**: Dove non vuoi commenti permanenti sulle PR
-- **Analisi batch**: Quando analizzi molte PR e vuoi solo i risultati sul terminale
-
-### Quando usare `disable_pr_comments: false` (predefinito)
-- **Produzione**: Quando vuoi che l'analisi AI sia visibile ai team
-- **Collaborazione**: Quando altri sviluppatori devono vedere l'analisi AI
-- **Audit**: Quando vuoi tracciare le decisioni AI nelle PR
-- **Trasparenza**: Quando vuoi che le decisioni di auto-merge siano documentate
+All other configuration options remain the same as before.
 
 ## Usage
 ### Options

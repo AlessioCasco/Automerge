@@ -14,10 +14,6 @@
     "enable_ai_confidence_score" : false,
     "enable_ai_automerge_action" : false,
     "disable_pr_comments" : false,
-    "ai_repos" : [
-        "terraform-ops",
-        "terraform-k8s"
-    ],
     "ai_provider" : "github",
     "ai_config" : {
         "github" : {

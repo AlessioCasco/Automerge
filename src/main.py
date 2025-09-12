@@ -70,7 +70,7 @@ def main():
         # Initialize GitHub client
         github_client = GitHubClient(access_token, owner, github_user)
 
-        # Get all pull requests
+        # Get all repos pull requests
         all_pulls = github_client.get_pull_requests(repos, filters)
 
         # Get test PRs if configured

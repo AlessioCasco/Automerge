@@ -66,11 +66,6 @@ class GitHubClient:
             print("No filters to match, please provide at least one, exiting")
             raise SystemExit(1)
 
-        # Check that we have at least one repository
-        if not repos:
-            print("No repositories configured, skipping pull request processing")
-            return dependency_prs
-
         for repo in repos:
             pr_url = self.base_repos_url + repo + "/pulls?per_page=100"
 
