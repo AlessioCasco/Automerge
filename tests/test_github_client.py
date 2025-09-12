@@ -591,7 +591,7 @@ class TestCommentPullReq(unittest.TestCase):
                     return call_count[0]
                 else:
                     return MERGEABLE_STATE_TIMEOUT + call_count[0]
-            
+
             mock_time.side_effect = time_side_effect
 
             self.client.comment_pull_req(
@@ -680,7 +680,7 @@ class TestMergePullReq(unittest.TestCase):
                     return call_count[0]
                 else:
                     return MERGEABLE_STATE_TIMEOUT + call_count[0]
-            
+
             mock_time.side_effect = time_side_effect
 
             self.client.merge_pull_req([self.pull_req])
