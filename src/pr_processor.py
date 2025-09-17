@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 try:
     from .github_client import GitHubClient
     from .ai_confidence import AIConfidenceCalculator
+    from .metrics import AutomergeMetrics
     from .utils import (
         LABEL_AUTOMERGE_IGNORE,
         LABEL_AUTOMERGE_NO_PROJECT,
@@ -30,6 +31,7 @@ try:
 except ImportError:
     from github_client import GitHubClient
     from ai_confidence import AIConfidenceCalculator
+    from metrics import AutomergeMetrics
     from utils import (
         LABEL_AUTOMERGE_IGNORE,
         LABEL_AUTOMERGE_NO_PROJECT,
@@ -61,13 +63,23 @@ class PRProcessor:
         self.github_client = github_client
         self.config = config
 
+        # Initialize metrics collector if pushgateway URL is configured
+        self.metrics = None
+        pushgateway_url = config.get("metrics_pushgateway_url")
+        if pushgateway_url:
+            self.metrics = AutomergeMetrics(pushgateway_url, job_name="automerge")
+            logger.info(f"Initialized metrics collector with pushgateway: {pushgateway_url}")
+        else:
+            logger.debug("No metrics pushgateway URL configured, metrics disabled")
+
         # Initialize AI confidence calculator if enabled
         self.ai_calculator = None
         if config.get("enable_ai_confidence_score", False):
             self.ai_calculator = AIConfidenceCalculator(
                 config["access_token"],
                 self.github_client,
-                config
+                config,
+                self.metrics  # Pass metrics to AI calculator
             )
 
         # Compile regex patterns for efficiency
@@ -204,6 +216,14 @@ class PRProcessor:
             except Exception as e:
                 logger.error(f"❌ Error processing test PR #{pr_number} from {repo}: {str(e)}")
                 continue
+
+        # Push metrics to Prometheus Pushgateway if configured
+        if self.metrics:
+            try:
+                self.metrics.push_metrics()
+                logger.debug("Successfully pushed test PR metrics to Prometheus Pushgateway")
+            except Exception as e:
+                logger.error(f"Failed to push test PR metrics to Prometheus Pushgateway: {e}")
 
     def _add_confidence_score_comment(self, pr: Dict[str, Any], last_comment: Optional[Dict[str, Any]] = None) -> None:
         """Add AI confidence score comment to PR.
@@ -424,3 +444,11 @@ class PRProcessor:
             self.github_client.multi_comments_pull_req(
                 list_to_be_closed, COMMENT_CLOSE_NEW_VERSION, COMMENT_ATLANTIS_UNLOCK)
             self.github_client.close_pull_requests(list_to_be_closed)
+
+        # Push metrics to Prometheus Pushgateway if configured
+        if self.metrics:
+            try:
+                self.metrics.push_metrics()
+                logger.debug("Successfully pushed metrics to Prometheus Pushgateway")
+            except Exception as e:
+                logger.error(f"Failed to push metrics to Prometheus Pushgateway: {e}")

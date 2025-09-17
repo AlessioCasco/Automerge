@@ -383,6 +383,7 @@ class TestLoadAndValidateConfig(unittest.TestCase):
             expected_config = self.valid_config.copy()
             expected_config["minimum_confidence_score"] = 100
             expected_config["auto_merge_environments"] = ["development"]
+            expected_config["metrics_pushgateway_url"] = None
             self.assertEqual(result, expected_config)
         finally:
             os.unlink(temp_path)
@@ -507,6 +508,63 @@ class TestLoadAndValidateConfig(unittest.TestCase):
         # Check that defaults are set
         self.assertEqual(result["minimum_confidence_score"], 100)
         self.assertEqual(result["auto_merge_environments"], ["development"])
+
+    def test_validate_config_metrics_pushgateway_url(self):
+        """Test validation of metrics_pushgateway_url configuration."""
+        # Test valid URLs
+        valid_urls = [
+            "http://pushgateway:9091",
+            "https://pushgateway.example.com:9091",
+            "http://localhost:9091",
+            ""  # Empty string should be allowed
+        ]
+
+        for url in valid_urls:
+            config = self.valid_config.copy()
+            config["metrics_pushgateway_url"] = url
+            # Should not raise exception
+            validate_config(config)
+
+        # Test invalid URLs
+        invalid_urls = [
+            "ftp://pushgateway:9091",  # Wrong protocol
+            "pushgateway:9091",  # Missing protocol
+            "http://",  # Incomplete URL
+            123  # Wrong type
+        ]
+
+        for url in invalid_urls:
+            config = self.valid_config.copy()
+            config["metrics_pushgateway_url"] = url
+            with self.assertRaises(ValueError):
+                validate_config(config)
+
+    def test_load_and_validate_config_metrics_defaults(self):
+        """Test that metrics configuration defaults are applied correctly."""
+        config = self.valid_config.copy()
+
+        # Remove metrics configuration to test defaults
+        if "metrics_pushgateway_url" in config:
+            del config["metrics_pushgateway_url"]
+
+        with patch("config.read_config") as mock_read:
+            mock_read.return_value = config
+            result = load_and_validate_config("test_file.json")
+
+            # Check that default is set
+            self.assertIsNone(result["metrics_pushgateway_url"])
+
+    def test_load_and_validate_config_metrics_custom(self):
+        """Test loading custom metrics configuration."""
+        config = self.valid_config.copy()
+        config["metrics_pushgateway_url"] = "http://custom-pushgateway:9091"
+
+        with patch("config.read_config") as mock_read:
+            mock_read.return_value = config
+            result = load_and_validate_config("test_file.json")
+
+            # Check that custom value is preserved
+            self.assertEqual(result["metrics_pushgateway_url"], "http://custom-pushgateway:9091")
 
 
 if __name__ == "__main__":

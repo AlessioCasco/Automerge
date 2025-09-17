@@ -8,6 +8,11 @@ import requests
 import urllib3
 from typing import Dict, Any, Optional, Tuple
 
+try:
+    from .metrics import AutomergeMetrics
+except ImportError:
+    from metrics import AutomergeMetrics
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,17 +32,19 @@ DEFAULT_TIMEOUT = 30
 class AIConfidenceCalculator:
     """Handles AI-powered confidence score calculation for PRs."""
 
-    def __init__(self, github_token: str, github_client=None, ai_config: Dict[str, Any] = None):
+    def __init__(self, github_token: str, github_client=None, ai_config: Dict[str, Any] = None, metrics: AutomergeMetrics = None):
         """Initialize AI confidence calculator.
 
         Args:
             github_token: GitHub access token with Copilot permissions
             github_client: GitHub client instance for API calls
             ai_config: AI configuration dictionary
+            metrics: Metrics collector for token usage tracking
         """
         self.github_token = github_token
         self.github_client = github_client
         self.ai_config = ai_config or {}
+        self.metrics = metrics
         self.headers = {
             "Authorization": f"Bearer {github_token}",
             "Accept": "application/vnd.github+json",
@@ -457,6 +464,25 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 logger.debug("📊 Parsed Results:")
                 logger.debug(f"   Confidence Score: {score}%")
                 logger.debug(f"   Explanation: {explanation}")
+
+                # Record token usage metrics
+                if self.metrics and metadata:
+                    repo_name = pr_data.get("head", {}).get("repo", {}).get("name", "unknown")
+                    model_name = metadata.get("model", "unknown")
+                    engine_name = metadata.get("provider", "unknown").lower().replace(" ", "-")
+                    input_tokens = metadata.get("input_tokens", 0)
+                    output_tokens = metadata.get("output_tokens", 0)
+
+                    self.metrics.record_token_usage(
+                        repo=repo_name,
+                        model=model_name,
+                        engine=engine_name,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens
+                    )
+
+                    logger.debug(f"📈 Recorded metrics - Repo: {repo_name}, Model: {model_name}, Engine: {engine_name}, "
+                               f"Input: {input_tokens}, Output: {output_tokens}")
 
                 return score, explanation, is_auto_merge_env, metadata
             else:

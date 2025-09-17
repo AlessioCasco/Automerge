@@ -167,6 +167,18 @@ def validate_config(config: Dict[str, Any]) -> None:
             if not isinstance(env, str) or not env.strip():
                 raise ValueError(f"auto_merge_environments[{i}] must be a non-empty string")
 
+    # Validate metrics configuration
+    if "metrics_pushgateway_url" in config:
+        if config["metrics_pushgateway_url"] is not None and not isinstance(config["metrics_pushgateway_url"], str):
+            raise ValueError("metrics_pushgateway_url must be a string")
+        if config["metrics_pushgateway_url"] and config["metrics_pushgateway_url"].strip():
+            url = config["metrics_pushgateway_url"].strip()
+            if not url.startswith(("http://", "https://")):
+                raise ValueError("metrics_pushgateway_url must start with http:// or https://")
+            # Check that there's more than just the protocol
+            if url in ("http://", "https://"):
+                raise ValueError("metrics_pushgateway_url must include hostname")
+
     # Validate test PRs configuration
     if "test_prs" in config:
         if not isinstance(config["test_prs"], list):
@@ -208,6 +220,9 @@ def load_and_validate_config(config_file: str) -> Dict[str, Any]:
 
     if "auto_merge_environments" not in config:
         config["auto_merge_environments"] = ["development"]  # Default to development only
+
+    if "metrics_pushgateway_url" not in config:
+        config["metrics_pushgateway_url"] = None  # Default to disabled metrics
 
     validate_config(config)
 

@@ -28,6 +28,7 @@
     },
     "minimum_confidence_score" : 100,
     "auto_merge_environments" : ["development"],
+    "metrics_pushgateway_url" : "http://prometheus-stack-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
     "test_prs" : [
         {
             "repo" : "terraform-ops",
