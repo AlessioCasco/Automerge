@@ -150,6 +150,23 @@ def validate_config(config: Dict[str, Any]) -> None:
         if not config.get("enable_ai_confidence_score", False):
             raise ValueError("enable_ai_automerge_action requires enable_ai_confidence_score to be true")
 
+    # Validate minimum confidence score configuration
+    if "minimum_confidence_score" in config:
+        if not isinstance(config["minimum_confidence_score"], (int, float)):
+            raise ValueError("minimum_confidence_score must be a number")
+        if not (0 <= config["minimum_confidence_score"] <= 100):
+            raise ValueError("minimum_confidence_score must be between 0 and 100")
+
+    # Validate auto-merge environments configuration
+    if "auto_merge_environments" in config:
+        if not isinstance(config["auto_merge_environments"], list):
+            raise ValueError("auto_merge_environments must be a list")
+        if not config["auto_merge_environments"]:
+            raise ValueError("auto_merge_environments cannot be empty")
+        for i, env in enumerate(config["auto_merge_environments"]):
+            if not isinstance(env, str) or not env.strip():
+                raise ValueError(f"auto_merge_environments[{i}] must be a non-empty string")
+
     # Validate test PRs configuration
     if "test_prs" in config:
         if not isinstance(config["test_prs"], list):
@@ -184,6 +201,14 @@ def load_and_validate_config(config_file: str) -> Dict[str, Any]:
         SystemExit: If required keys are missing
     """
     config = read_config(config_file)
+
+    # Set default values for new configuration options
+    if "minimum_confidence_score" not in config:
+        config["minimum_confidence_score"] = 100  # Default to 100% for safety
+
+    if "auto_merge_environments" not in config:
+        config["auto_merge_environments"] = ["development"]  # Default to development only
+
     validate_config(config)
 
     # Override with environment variables if present

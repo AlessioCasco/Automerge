@@ -26,6 +26,8 @@
             "model" : "claude-sonnet-4"
         }
     },
+    "minimum_confidence_score" : 100,
+    "auto_merge_environments" : ["development"],
     "test_prs" : [
         {
             "repo" : "terraform-ops",

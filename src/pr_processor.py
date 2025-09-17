@@ -217,14 +217,14 @@ class PRProcessor:
 
         try:
             # Calculate confidence score
-            confidence_score, explanation, is_dev_env, metadata = self.ai_calculator.calculate_confidence_score(pr)
+            confidence_score, explanation, is_auto_merge_env, metadata = self.ai_calculator.calculate_confidence_score(pr)
 
             # Determine environment string
-            environment = "Development" if is_dev_env else "Production/Protected"
+            environment = "Auto-merge Allowed" if is_auto_merge_env else "Auto-merge Disabled"
 
             # Check if auto-merge should be enabled
             enable_auto_merge = self.config.get("enable_ai_automerge_action", False)
-            should_auto_merge = self.ai_calculator.should_auto_merge(confidence_score, is_dev_env, enable_auto_merge)
+            should_auto_merge = self.ai_calculator.should_auto_merge(confidence_score, is_auto_merge_env, enable_auto_merge)
 
             auto_merge_status = "✅ Enabled" if should_auto_merge else "❌ Disabled"
 
@@ -376,22 +376,22 @@ class PRProcessor:
                             # No need to fetch plan separately since AIConfidenceCalculator handles it
 
                             # Perform AI analysis (it will extract plan from comments internally)
-                            confidence_score, explanation, is_dev_env, metadata = self.ai_calculator.calculate_confidence_score(pr)
+                            confidence_score, explanation, is_auto_merge_env, metadata = self.ai_calculator.calculate_confidence_score(pr)
 
                             # Check if auto-merge should be enabled
                             enable_auto_merge = self.config.get("enable_ai_automerge_action", False)
-                            should_auto_merge = self.ai_calculator.should_auto_merge(confidence_score, is_dev_env, enable_auto_merge)
+                            should_auto_merge = self.ai_calculator.should_auto_merge(confidence_score, is_auto_merge_env, enable_auto_merge)
 
                             # Add AI comment
                             self._add_confidence_score_comment(pr)
 
                             # Auto-merge if conditions are met
                             if should_auto_merge:
-                                logger.info(f"   🚀 Auto-merging {format_pr_info(pr)} (100% confidence, dev environment)")
+                                logger.info(f"   🚀 Auto-merging {format_pr_info(pr)} (confidence: {confidence_score}%, auto-merge environment)")
                                 self.github_client.merge_pull_req([pr])
                                 continue  # Skip standard unlock process
                             else:
-                                logger.info(f"   📋 Manual merge required for {format_pr_info(pr)} (confidence: {confidence_score}%, dev: {is_dev_env})")
+                                logger.info(f"   📋 Manual merge required for {format_pr_info(pr)} (confidence: {confidence_score}%, auto-merge env: {is_auto_merge_env})")
 
                     except Exception as e:
                         logger.error(f"   ❌ Error during AI analysis for {format_pr_info(pr)}: {str(e)}")

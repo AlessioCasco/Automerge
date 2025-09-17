@@ -150,16 +150,16 @@ class TestAIFunctionality(unittest.TestCase):
         dev_pr["head"]["ref"] = "feature/new-feature"
         dev_pr["base"]["ref"] = "develop"
 
-        is_dev = calculator._is_development_environment(dev_pr)
-        self.assertTrue(is_dev)
+        is_auto_merge_env = calculator._is_auto_merge_environment(dev_pr)
+        self.assertTrue(is_auto_merge_env)
 
         # Test production environment
         prod_pr = self.sample_pr_data.copy()
-        prod_pr["head"]["ref"] = "hotfix/critical-fix"
+        prod_pr["head"]["ref"] = "release/critical-fix"
         prod_pr["base"]["ref"] = "main"
 
-        is_dev = calculator._is_development_environment(prod_pr)
-        self.assertFalse(is_dev)
+        is_auto_merge_env = calculator._is_auto_merge_environment(prod_pr)
+        self.assertFalse(is_auto_merge_env)
 
     @patch("ai_confidence.requests.post")
     def test_confidence_score_calculation_with_metadata(self, mock_post):
@@ -211,17 +211,64 @@ class TestAIFunctionality(unittest.TestCase):
         calculator = AIConfidenceCalculator("test_token", None, self.github_config)
 
         # Test auto-merge conditions
-        should_merge = calculator.should_auto_merge(100, True, True)  # 100% confidence, dev env, enabled
+        should_merge = calculator.should_auto_merge(100, True, True)  # 100% confidence, auto-merge env, enabled
         self.assertTrue(should_merge)
 
-        should_merge = calculator.should_auto_merge(85, True, True)  # 85% confidence, dev env, enabled
+        should_merge = calculator.should_auto_merge(85, True, True)  # 85% confidence, auto-merge env, enabled
+        self.assertFalse(should_merge)  # Below default 100% threshold
+
+        should_merge = calculator.should_auto_merge(100, False, True)  # 100% confidence, no auto-merge env, enabled
         self.assertFalse(should_merge)
 
-        should_merge = calculator.should_auto_merge(100, False, True)  # 100% confidence, prod env, enabled
+        should_merge = calculator.should_auto_merge(100, True, False)  # 100% confidence, auto-merge env, disabled
         self.assertFalse(should_merge)
 
-        should_merge = calculator.should_auto_merge(100, True, False)  # 100% confidence, dev env, disabled
-        self.assertFalse(should_merge)
+    def test_configurable_auto_merge_threshold(self):
+        """Test configurable minimum confidence score for auto-merge."""
+        # Test with custom threshold
+        custom_config = self.github_config.copy()
+        custom_config["minimum_confidence_score"] = 80
+
+        calculator = AIConfidenceCalculator("test_token", None, custom_config)
+
+        # Test with 80% threshold
+        should_merge = calculator.should_auto_merge(85, True, True)  # 85% confidence, auto-merge env, enabled
+        self.assertTrue(should_merge)  # Should pass with 80% threshold
+
+        should_merge = calculator.should_auto_merge(75, True, True)  # 75% confidence, auto-merge env, enabled
+        self.assertFalse(should_merge)  # Should fail below 80% threshold
+
+    def test_configurable_auto_merge_environments(self):
+        """Test configurable auto-merge environments."""
+        # Test with custom environments
+        custom_config = self.github_config.copy()
+        custom_config["auto_merge_environments"] = ["development", "sandbox"]
+
+        calculator = AIConfidenceCalculator("test_token", None, custom_config)
+
+        # Test development environment detection
+        pr_data_dev = {
+            "base": {"ref": "develop"},
+            "head": {"ref": "feature/test"}
+        }
+        is_auto_merge_env = calculator._is_auto_merge_environment(pr_data_dev)
+        self.assertTrue(is_auto_merge_env)
+
+        # Test sandbox environment detection
+        pr_data_sandbox = {
+            "base": {"ref": "sandbox"},
+            "head": {"ref": "experiment/test"}
+        }
+        is_auto_merge_env = calculator._is_auto_merge_environment(pr_data_sandbox)
+        self.assertTrue(is_auto_merge_env)
+
+        # Test production environment (should not be auto-merge)
+        pr_data_prod = {
+            "base": {"ref": "main"},
+            "head": {"ref": "release/v1.0"}
+        }
+        is_auto_merge_env = calculator._is_auto_merge_environment(pr_data_prod)
+        self.assertFalse(is_auto_merge_env)
 
     @patch("ai_confidence.requests.post")
     def test_error_handling(self, mock_post):

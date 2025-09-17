@@ -379,7 +379,11 @@ class TestLoadAndValidateConfig(unittest.TestCase):
 
         try:
             result = load_and_validate_config(temp_path)
-            self.assertEqual(result, self.valid_config)
+            # Check that default values are added
+            expected_config = self.valid_config.copy()
+            expected_config["minimum_confidence_score"] = 100
+            expected_config["auto_merge_environments"] = ["development"]
+            self.assertEqual(result, expected_config)
         finally:
             os.unlink(temp_path)
 
@@ -430,6 +434,79 @@ class TestLoadAndValidateConfig(unittest.TestCase):
         mock_read.assert_called_once_with("test_file.json")
         mock_validate.assert_called_once_with(self.valid_config)
         self.assertEqual(result, self.valid_config)
+
+    def test_validate_config_minimum_confidence_score(self):
+        """Test validation of minimum_confidence_score configuration."""
+        # Test valid minimum_confidence_score
+        config = self.valid_config.copy()
+        config["minimum_confidence_score"] = 80
+        validate_config(config)  # Should not raise
+
+        # Test invalid minimum_confidence_score (not a number)
+        config["minimum_confidence_score"] = "80"
+        with self.assertRaises(ValueError) as context:
+            validate_config(config)
+        self.assertIn("minimum_confidence_score must be a number", str(context.exception))
+
+        # Test invalid minimum_confidence_score (out of range)
+        config["minimum_confidence_score"] = 150
+        with self.assertRaises(ValueError) as context:
+            validate_config(config)
+        self.assertIn("minimum_confidence_score must be between 0 and 100", str(context.exception))
+
+        config["minimum_confidence_score"] = -10
+        with self.assertRaises(ValueError) as context:
+            validate_config(config)
+        self.assertIn("minimum_confidence_score must be between 0 and 100", str(context.exception))
+
+    def test_validate_config_auto_merge_environments(self):
+        """Test validation of auto_merge_environments configuration."""
+        # Test valid auto_merge_environments
+        config = self.valid_config.copy()
+        config["auto_merge_environments"] = ["development", "sandbox"]
+        validate_config(config)  # Should not raise
+
+        # Test invalid auto_merge_environments (not a list)
+        config["auto_merge_environments"] = "development"
+        with self.assertRaises(ValueError) as context:
+            validate_config(config)
+        self.assertIn("auto_merge_environments must be a list", str(context.exception))
+
+        # Test invalid auto_merge_environments (empty list)
+        config["auto_merge_environments"] = []
+        with self.assertRaises(ValueError) as context:
+            validate_config(config)
+        self.assertIn("auto_merge_environments cannot be empty", str(context.exception))
+
+        # Test invalid auto_merge_environments (non-string element)
+        config["auto_merge_environments"] = ["development", 123]
+        with self.assertRaises(ValueError) as context:
+            validate_config(config)
+        self.assertIn("auto_merge_environments[1] must be a non-empty string", str(context.exception))
+
+        # Test invalid auto_merge_environments (empty string element)
+        config["auto_merge_environments"] = ["development", ""]
+        with self.assertRaises(ValueError) as context:
+            validate_config(config)
+        self.assertIn("auto_merge_environments[1] must be a non-empty string", str(context.exception))
+
+    @patch("config.read_config")
+    def test_load_and_validate_config_defaults(self, mock_read):
+        """Test that default values are set for new configuration options."""
+        config = self.valid_config.copy()
+
+        # Remove the new options to test defaults
+        if "minimum_confidence_score" in config:
+            del config["minimum_confidence_score"]
+        if "auto_merge_environments" in config:
+            del config["auto_merge_environments"]
+
+        mock_read.return_value = config
+        result = load_and_validate_config("test_file.json")
+
+        # Check that defaults are set
+        self.assertEqual(result["minimum_confidence_score"], 100)
+        self.assertEqual(result["auto_merge_environments"], ["development"])
 
 
 if __name__ == "__main__":

@@ -350,49 +350,48 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             logger.error(f"Error parsing AI response: {e}")
             return 50, "Error parsing AI response"
 
-    def _is_development_environment(self, pr_data: Dict[str, Any]) -> bool:
-        """Determine if the PR is targeting a development environment.
+    def _is_auto_merge_environment(self, pr_data: Dict[str, Any]) -> bool:
+        """Determine if the PR is targeting an environment that allows auto-merge.
 
         Args:
             pr_data: Pull request data
 
         Returns:
-            True if development environment, False otherwise
+            True if environment allows auto-merge, False otherwise
         """
+        # Get configured auto-merge environments
+        auto_merge_envs = self.ai_config.get("auto_merge_environments", ["development"])
+
         # Check branch name patterns
         base_branch = pr_data.get("base", {}).get("ref", "").lower()
         head_branch = pr_data.get("head", {}).get("ref", "").lower()
 
-        # Development branch patterns
-        dev_patterns = [
-            r"dev",
-            r"development",
-            r"staging",
-            r"test",
-            r"feature/",
-            r"hotfix/",
-        ]
+        # Define environment patterns mapping
+        env_patterns = {
+            "development": [
+                r"dev", r"development", r"staging", r"test",
+                r"feature/", r"hotfix/", r"develop"
+            ],
+            "sandbox": [
+                r"sandbox", r"sbx"
+            ],
+            "production": [
+                r"main", r"master", r"prod", r"production", r"release/"
+            ]
+        }
 
-        # Production/protected branch patterns
-        prod_patterns = [
-            r"main",
-            r"master",
-            r"prod",
-            r"production",
-            r"release/",
-        ]
-
-        # Check if base branch is production
-        for pattern in prod_patterns:
-            if re.search(pattern, base_branch):
-                return False
-
-        # Check if head branch is development
-        for pattern in dev_patterns:
-            if re.search(pattern, head_branch):
-                return True
+        # Check if any configured environment matches
+        for env in auto_merge_envs:
+            env_lower = env.lower()
+            if env_lower in env_patterns:
+                patterns = env_patterns[env_lower]
+                for pattern in patterns:
+                    if re.search(pattern, base_branch) or re.search(pattern, head_branch):
+                        logger.debug(f"Environment '{env}' detected for auto-merge (pattern: {pattern})")
+                        return True
 
         # Default to False (conservative approach)
+        logger.debug(f"No auto-merge environment detected. Configured: {auto_merge_envs}")
         return False
 
     def calculate_confidence_score(self, pr_data: Dict[str, Any]) -> Tuple[int, str, bool, Dict[str, Any]]:
@@ -410,14 +409,14 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             plan_output = self._extract_terraform_plan(pr_data)
 
             # Determine environment
-            is_dev_env = self._is_development_environment(pr_data)
+            is_auto_merge_env = self._is_auto_merge_environment(pr_data)
 
             logger.debug("🔍 PR Analysis Context:")
             logger.debug(f"   PR Title: {pr_data.get('title', 'N/A')}")
             logger.debug(f"   Repository: {pr_data.get('head', {}).get('repo', {}).get('name', 'N/A')}")
             logger.debug(f"   Base Branch: {pr_data.get('base', {}).get('ref', 'N/A')}")
             logger.debug(f"   Head Branch: {pr_data.get('head', {}).get('ref', 'N/A')}")
-            logger.debug(f"   Environment: {'Development' if is_dev_env else 'Production/Protected'} (for auto-merge only)")
+            logger.debug(f"   Environment: {'Auto-merge Allowed' if is_auto_merge_env else 'Auto-merge Disabled'} (for auto-merge only)")
             logger.debug(f"   Plan Output: {plan_output[:200]}{'...' if len(plan_output) > 200 else ''}")
 
             # Build prompt for AI - focus only on PR description, changelog, and plan output
@@ -459,13 +458,13 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 logger.debug(f"   Confidence Score: {score}%")
                 logger.debug(f"   Explanation: {explanation}")
 
-                return score, explanation, is_dev_env, metadata
+                return score, explanation, is_auto_merge_env, metadata
             else:
                 # Fallback logic when AI is unavailable
                 logger.warning("AI service unavailable, using fallback logic")
                 logger.debug("🔄 Using Fallback Logic")
 
-                fallback_score, fallback_explanation, fallback_is_dev = self._fallback_confidence_calculation(pr_data, plan_output, is_dev_env)
+                fallback_score, fallback_explanation, fallback_is_auto_merge = self._fallback_confidence_calculation(pr_data, plan_output, is_auto_merge_env)
                 fallback_metadata = {
                     "provider": "fallback",
                     "model": "none",
@@ -473,7 +472,7 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                     "output_tokens": 0
                 }
 
-                return fallback_score, fallback_explanation, fallback_is_dev, fallback_metadata
+                return fallback_score, fallback_explanation, fallback_is_auto_merge, fallback_metadata
 
         except Exception as e:
             logger.error(f"Error calculating confidence score: {e}")
@@ -486,16 +485,16 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             }
             return 0, f"Error calculating confidence score: {str(e)}", False, error_metadata
 
-    def _fallback_confidence_calculation(self, pr_data: Dict[str, Any], plan_output: str, is_dev_env: bool) -> Tuple[int, str, bool]:
+    def _fallback_confidence_calculation(self, pr_data: Dict[str, Any], plan_output: str, is_auto_merge_env: bool) -> Tuple[int, str, bool]:
         """Fallback confidence calculation when AI is unavailable.
 
         Args:
             pr_data: Pull request data
             plan_output: Terraform plan output
-            is_dev_env: Whether this is a development environment (for auto-merge only)
+            is_auto_merge_env: Whether this environment allows auto-merge
 
         Returns:
-            Tuple of (confidence_score, explanation, is_development_env)
+            Tuple of (confidence_score, explanation, is_auto_merge_env)
         """
         # Base score starts at 50%
         score = 50
@@ -546,21 +545,24 @@ Labels: {', '.join(labels) if labels else 'None'}"""
         else:
             explanation = "Standard risk assessment"
 
-        return score, explanation, is_dev_env
+        return score, explanation, is_auto_merge_env
 
-    def should_auto_merge(self, confidence_score: int, is_dev_env: bool, enable_auto_merge: bool) -> bool:
+    def should_auto_merge(self, confidence_score: int, is_auto_merge_env: bool, enable_auto_merge: bool) -> bool:
         """Determine if PR should be auto-merged.
 
         Args:
             confidence_score: AI confidence score (0-100)
-            is_dev_env: Whether this is a development environment
+            is_auto_merge_env: Whether this environment allows auto-merge
             enable_auto_merge: Whether auto-merge is enabled in config
 
         Returns:
             True if PR should be auto-merged, False otherwise
         """
+        # Get minimum confidence score from config
+        minimum_score = self.ai_config.get("minimum_confidence_score", 100)
+
         # Auto-merge only if:
         # 1. Auto-merge is enabled in config
-        # 2. Confidence score is 100%
-        # 3. Environment is development
-        return enable_auto_merge and confidence_score == 100 and is_dev_env
+        # 2. Confidence score meets or exceeds minimum threshold
+        # 3. Environment allows auto-merge
+        return enable_auto_merge and confidence_score >= minimum_score and is_auto_merge_env
