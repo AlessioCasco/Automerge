@@ -741,3 +741,92 @@ class TestProcessDismissedPrs(unittest.TestCase):
 
         mock_approve.assert_called_once_with(self.pull_req["url"])
         mock_merge.assert_not_called()
+
+
+class TestRepositoryInfo(unittest.TestCase):
+    """Test repository information methods."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.client = GitHubClient("token123", "owner", "user")
+
+    @patch("requests.get")
+    def test_get_repository_info_success(self, mock_get):
+        """Test successful repository info retrieval."""
+        mock_repo_data = {
+            "name": "test-repo",
+            "topics": ["terraform", "automerge_ai_disabled", "infrastructure"]
+        }
+        mock_response = MockResponse(mock_repo_data, 200)
+        mock_get.return_value = mock_response
+
+        result = self.client.get_repository_info("test-repo")
+
+        self.assertEqual(result, mock_repo_data)
+        mock_get.assert_called_once_with(
+            "https://api.github.com/repos/owner/test-repo",
+            headers=self.client.headers,
+            timeout=DEFAULT_TIMEOUT
+        )
+
+    @patch("requests.get")
+    def test_get_repository_info_failure(self, mock_get):
+        """Test repository info retrieval failure."""
+        mock_response = MockResponse({"message": "Not Found"}, 404)
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(SystemExit):
+            self.client.get_repository_info("nonexistent-repo")
+
+    @patch("requests.get")
+    def test_is_ai_disabled_for_repo_disabled(self, mock_get):
+        """Test AI disabled check when repository has the disable keyword."""
+        mock_repo_data = {
+            "name": "test-repo",
+            "topics": ["terraform", "automerge_ai_disabled", "infrastructure"]
+        }
+        mock_response = MockResponse(mock_repo_data, 200)
+        mock_get.return_value = mock_response
+
+        result = self.client.is_ai_disabled_for_repo("test-repo")
+
+        self.assertTrue(result)
+
+    @patch("requests.get")
+    def test_is_ai_disabled_for_repo_enabled(self, mock_get):
+        """Test AI disabled check when repository doesn't have the disable keyword."""
+        mock_repo_data = {
+            "name": "test-repo",
+            "topics": ["terraform", "infrastructure"]
+        }
+        mock_response = MockResponse(mock_repo_data, 200)
+        mock_get.return_value = mock_response
+
+        result = self.client.is_ai_disabled_for_repo("test-repo")
+
+        self.assertFalse(result)
+
+    @patch("requests.get")
+    def test_is_ai_disabled_for_repo_no_topics(self, mock_get):
+        """Test AI disabled check when repository has no topics."""
+        mock_repo_data = {
+            "name": "test-repo",
+            "topics": []
+        }
+        mock_response = MockResponse(mock_repo_data, 200)
+        mock_get.return_value = mock_response
+
+        result = self.client.is_ai_disabled_for_repo("test-repo")
+
+        self.assertFalse(result)
+
+    @patch("requests.get")
+    def test_is_ai_disabled_for_repo_error(self, mock_get):
+        """Test AI disabled check when repository info retrieval fails."""
+        mock_response = MockResponse({"message": "Not Found"}, 404)
+        mock_get.return_value = mock_response
+
+        result = self.client.is_ai_disabled_for_repo("nonexistent-repo")
+
+        # Should return False (enabled) when there's an error
+        self.assertFalse(result)

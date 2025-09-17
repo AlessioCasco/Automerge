@@ -177,6 +177,11 @@ class PRProcessor:
             repo = test_pr["repo"]
             pr_number = test_pr["pr_number"]
 
+            # Check if AI is disabled for this repository
+            if self.github_client.is_ai_disabled_for_repo(repo):
+                logger.info(f"🚫 Skipping AI analysis for test PR #{pr_number} from {repo} (AI disabled for repository)")
+                continue
+
             logger.info(f"Analyzing test PR #{pr_number} from {repo}")
 
             # Get the specific PR
@@ -344,6 +349,17 @@ class PRProcessor:
 
                 # Check if this repo is in AI repos list and AI is enabled
                 if enable_ai and self.ai_calculator:
+                    # Check if AI is disabled for this specific repository
+                    repo_name = pr.get("head", {}).get("repo", {}).get("name", "")
+                    if repo_name and self.github_client.is_ai_disabled_for_repo(repo_name):
+                        logger.info(f"🚫 Skipping AI analysis for {format_pr_info(pr)} (AI disabled for repository)")
+                        # Continue with standard unlock process
+                        self.github_client.multi_comments_pull_req(
+                            [pr], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
+                        self.github_client.set_label_to_pull_request(
+                            [pr], LABEL_AUTOMERGE_IGNORE)
+                        continue
+
                     logger.info(f"🤖 Processing AI analysis for {format_pr_info(pr)} (AI-enabled repo)")
 
                     try:

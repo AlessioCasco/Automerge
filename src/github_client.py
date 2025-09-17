@@ -747,6 +747,67 @@ class GitHubClient:
             else:
                 logger.info(f"PR {pr['number']} has no comments after re-approval, will be processed in next run.")
 
+    def get_repository_info(self, repo_name: str) -> Dict[str, Any]:
+        """Get repository information including topics.
+
+        Args:
+            repo_name: Name of the repository
+
+        Returns:
+            Dictionary containing repository information including topics
+
+        Raises:
+            SystemExit: If API call fails
+        """
+        repo_url = f"{self.base_repos_url}{repo_name}"
+
+        logger.debug(f"Fetching repository info for {repo_name}")
+
+        response = requests.get(
+            repo_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+
+        if response.status_code != 200:
+            logger.error(f"Failed to get repository info for {repo_name}. Status code: {response.status_code}")
+            raise SystemExit(1)
+
+        return json.loads(response.text)
+
+    def is_ai_disabled_for_repo(self, repo_name: str) -> bool:
+        """Check if AI analysis is disabled for a repository.
+
+        Args:
+            repo_name: Name of the repository
+
+        Returns:
+            True if AI is disabled for this repository, False otherwise
+        """
+        try:
+            from .utils import AI_DISABLE_KEYWORD
+        except ImportError:
+            from utils import AI_DISABLE_KEYWORD
+
+        try:
+            repo_info = self.get_repository_info(repo_name)
+            topics = repo_info.get("topics", [])
+
+            is_disabled = AI_DISABLE_KEYWORD in topics
+
+            if is_disabled:
+                logger.info(f"AI analysis disabled for repository {repo_name} (found topic: {AI_DISABLE_KEYWORD})")
+            else:
+                logger.debug(f"AI analysis enabled for repository {repo_name} (topics: {topics})")
+
+            return is_disabled
+
+        except SystemExit:
+            # get_repository_info raises SystemExit on API failure
+            logger.error(f"Failed to get repository info for {repo_name}, defaulting to AI enabled")
+            return False
+        except Exception as e:
+            logger.error(f"Error checking AI disable status for repository {repo_name}: {e}")
+            # Default to enabled if we can't check
+            return False
+
     def approve_all_prs(self, all_pulls: List[Dict[str, Any]]) -> None:
         """Approve all not approved PRs matching the filters from the config.
 

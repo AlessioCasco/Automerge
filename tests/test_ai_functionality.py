@@ -460,6 +460,7 @@ class TestPRProcessorAI(unittest.TestCase):
         self.github_client.merge_pull_req = Mock()
         self.github_client.multi_comments_pull_req = Mock()
         self.github_client.is_approved = Mock(return_value=None)
+        self.github_client.is_ai_disabled_for_repo = Mock(return_value=False)  # AI enabled for this test
 
         pr_data = {
             "title": "[DEPENDENCIES] Update provider",

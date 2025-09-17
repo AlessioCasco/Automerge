@@ -685,5 +685,125 @@ class TestPRProcessorIntegration(unittest.TestCase):
             [pr_with_diffs], LABEL_AUTOMERGE_IGNORE)
 
 
+class TestAIDisableFunctionality(unittest.TestCase):
+    """Test AI disable functionality for repositories."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_client = Mock()
+        self.mock_config = {
+            "access_token": "test_token",
+            "filters": ["^\\[DEPENDENCIES\\] Update Terraform"],
+            "enable_ai_confidence_score": True,
+            "enable_ai_automerge_action": False,
+            "disable_pr_comments": False,
+            "ai_provider": "github",
+            "ai_config": {
+                "github": {
+                    "api_base": "http://localhost:4141",
+                    "model": "claude-sonnet-4"
+                }
+            }
+        }
+        self.processor = PRProcessor(self.mock_client, self.mock_config)
+
+    def test_process_test_prs_with_ai_disabled(self):
+        """Test that test PRs are skipped when AI is disabled for the repository."""
+        test_prs = [
+            {"repo": "disabled-repo", "pr_number": 123},
+            {"repo": "enabled-repo", "pr_number": 456}
+        ]
+
+        # Mock the AI disable check
+        def mock_is_ai_disabled(repo_name):
+            return repo_name == "disabled-repo"
+
+        self.mock_client.is_ai_disabled_for_repo.side_effect = mock_is_ai_disabled
+
+        # Mock the PR data retrieval for enabled repo only
+        mock_pr_data = {"title": "Test PR", "body": "Test body"}
+        self.mock_client.headers = {"Authorization": "Bearer token"}
+        self.mock_client.base_repos_url = "https://api.github.com/repos/owner/"
+
+        with patch("requests.get") as mock_get:
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = mock_pr_data
+            mock_get.return_value = mock_response
+
+            self.processor.process_test_prs(test_prs)
+
+        # Should only process the enabled repo
+        self.mock_client.is_ai_disabled_for_repo.assert_any_call("disabled-repo")
+        self.mock_client.is_ai_disabled_for_repo.assert_any_call("enabled-repo")
+
+    def test_process_prs_with_ai_disabled(self):
+        """Test that PRs are skipped when AI is disabled for the repository."""
+        pr_with_diffs = {
+            "number": 123,
+            "url": "https://api.github.com/repos/owner/disabled-repo/pulls/123",
+            "head": {"repo": {"name": "disabled-repo"}},
+            "issue_url": "https://api.github.com/repos/owner/disabled-repo/issues/123"
+        }
+
+        # Mock the AI disable check to return True
+        self.mock_client.is_ai_disabled_for_repo.return_value = True
+
+        # Mock other required methods for create_pr_lists
+        self.mock_client.is_approved.return_value = True
+        self.mock_client.get_last_comment.return_value = {
+            "body": "Plan: 1 to add, 0 to change, 0 to destroy."
+        }
+        self.mock_client.multi_comments_pull_req.return_value = None
+        self.mock_client.set_label_to_pull_request.return_value = None
+
+        # Process PRs
+        self.processor.process_prs([pr_with_diffs], False)
+
+        # Should check if AI is disabled
+        self.mock_client.is_ai_disabled_for_repo.assert_called_once_with("disabled-repo")
+
+        # Should skip AI analysis and go straight to unlock process
+        self.mock_client.multi_comments_pull_req.assert_called_once_with(
+            [pr_with_diffs], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
+        self.mock_client.set_label_to_pull_request.assert_called_once_with(
+            [pr_with_diffs], LABEL_AUTOMERGE_IGNORE)
+
+    def test_process_prs_with_ai_enabled(self):
+        """Test that PRs are processed normally when AI is enabled for the repository."""
+        pr_with_diffs = {
+            "number": 123,
+            "url": "https://api.github.com/repos/owner/enabled-repo/pulls/123",
+            "head": {"repo": {"name": "enabled-repo"}},
+            "issue_url": "https://api.github.com/repos/owner/enabled-repo/issues/123"
+        }
+
+        # Mock the AI disable check to return False
+        self.mock_client.is_ai_disabled_for_repo.return_value = False
+
+        # Mock other required methods for create_pr_lists
+        self.mock_client.is_approved.return_value = True
+        self.mock_client.get_last_comment.return_value = {
+            "body": "Plan: 1 to add, 0 to change, 0 to destroy."
+        }
+        self.mock_client.multi_comments_pull_req.return_value = None
+        self.mock_client.set_label_to_pull_request.return_value = None
+
+        # Mock AI calculator methods
+        mock_ai_calculator = Mock()
+        mock_ai_calculator.calculate_confidence_score.return_value = (80, "Safe update", True, {})
+        mock_ai_calculator.should_auto_merge.return_value = False
+        self.processor.ai_calculator = mock_ai_calculator
+
+        # Process PRs
+        self.processor.process_prs([pr_with_diffs], False)
+
+        # Should check if AI is disabled
+        self.mock_client.is_ai_disabled_for_repo.assert_called_once_with("enabled-repo")
+
+        # Should proceed with AI analysis (not skip it)
+        self.mock_client.get_last_comment.assert_called_with(pr_with_diffs["issue_url"])
+
+
 if __name__ == "__main__":
     unittest.main()
