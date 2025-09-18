@@ -783,7 +783,7 @@ class TestRepositoryInfo(unittest.TestCase):
         """Test AI disabled check when repository has the disable keyword."""
         mock_repo_data = {
             "name": "test-repo",
-            "topics": ["terraform", "automerge_ai_disabled", "infrastructure"]
+            "topics": ["terraform", "automerge-ai-disabled", "infrastructure"]
         }
         mock_response = MockResponse(mock_repo_data, 200)
         mock_get.return_value = mock_response

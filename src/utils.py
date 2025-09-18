@@ -29,7 +29,7 @@ LABEL_AUTOMERGE_DISMISSED = "automerge_dismissed"
 LABEL_AUTOMERGE_CONFLICT = "automerge_conflict"
 
 # AI Configuration
-AI_DISABLE_KEYWORD = "automerge-ai-disable"
+AI_DISABLE_KEYWORD = "automerge-ai-disabled"
 
 # Comments
 COMMENT_ATLANTIS_PLAN = "atlantis plan"
