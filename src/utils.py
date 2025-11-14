@@ -27,15 +27,25 @@ LABEL_AUTOMERGE_IGNORE = "automerge_ignore"
 LABEL_AUTOMERGE_NO_PROJECT = "automerge_no_project"
 LABEL_AUTOMERGE_DISMISSED = "automerge_dismissed"
 LABEL_AUTOMERGE_CONFLICT = "automerge_conflict"
+LABEL_SAFE_FOR_AUTOMERGE = "safe-for-automerge"
+LABEL_AUTOMERGE_SAFE_EXAMPLE = "automerge-safe-example"
 
 # AI Configuration
 AI_DISABLE_KEYWORD = "automerge-ai-disabled"
+
+# Embeddings Configuration
+DEFAULT_EMBEDDINGS_MAX_CACHED_PRS = 100
+DEFAULT_EMBEDDINGS_SIMILARITY_BOOST_WEIGHT = 0.5
+DEFAULT_EMBEDDINGS_AWS_REGION = "eu-west-1"
+GITHUB_MAX_PER_PAGE = 100  # GitHub API maximum items per page
 
 # Comments
 COMMENT_ATLANTIS_PLAN = "atlantis plan"
 COMMENT_ATLANTIS_UNLOCK = "atlantis unlock"
 COMMENT_IGNORE_AUTOMERGE = "This PR will be ignored by automerge"
-COMMENT_CLOSE_NEW_VERSION = "This PR will be closed since there is a new version of this dependency"
+COMMENT_CLOSE_NEW_VERSION = (
+    "This PR will be closed since there is a new version of this dependency"
+)
 COMMENT_NO_PROJECT = "Will be ignored, 0 projects planned, usually due to modules update or no file changed, check and close them yourself please"
 
 # AI Confidence Score Comments

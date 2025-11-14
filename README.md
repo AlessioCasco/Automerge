@@ -340,16 +340,190 @@ python -m unittest tests.test_ai_confidence -v
 - **Audit**: When you want to track AI decisions in PRs
 - **Transparency**: When you want auto-merge decisions to be documented
 
+## Embeddings-Based Similarity Analysis
+
+Automerge now includes an advanced **embeddings-based similarity analysis** feature that uses Amazon Bedrock Titan Embeddings V2 to enhance AI confidence score calculations by comparing PRs against historical safe examples.
+
+### How It Works
+
+The embeddings service:
+
+1. **Extracts PR Components**: For each PR, extracts:
+   - File names and paths
+   - File content and patches
+   - Git diff
+   - Terraform plan output
+
+2. **Generates Embeddings**: Uses Amazon Bedrock Titan Embeddings V2 to generate high-dimensional vector representations of each component
+
+3. **Caches in S3**: Stores embeddings in S3 for fast retrieval and reuse
+
+4. **Similarity Comparison**: Compares the current PR against historical safe PRs using cosine similarity
+
+5. **Boosts Confidence**: Applies a similarity boost to the AI confidence score when the PR is similar to previously merged safe PRs
+
+### Configuration
+
+Add the `embeddings` section to your config:
+
+```json
+{
+  "embeddings": {
+    "enabled": true,
+    "s3_bucket": "automerge-embeddings-production",
+    "aws_region": "eu-west-1",
+    "similarity_boost_weight": 0.5,
+    "max_cached_prs": 100,
+    "force_recalculate": false
+  }
+}
+```
+
+**Configuration Options:**
+
+- **`enabled`**: Enable/disable embeddings service (default: `false`)
+- **`s3_bucket`**: S3 bucket name for storing embeddings (required when enabled)
+- **`aws_region`**: AWS region for S3 and Bedrock (default: `"eu-west-1"`)
+- **`similarity_boost_weight`**: Weight for similarity boost in score calculation (default: `0.5`, range: `0.0-2.0`)
+- **`max_cached_prs`**: Maximum number of historical safe PRs to cache per repository (default: `100`)
+- **`force_recalculate`**: Bypass cache and recalculate all embeddings - debug mode only (default: `false`)
+
+### AWS Requirements
+
+The embeddings service requires:
+
+1. **AWS Credentials**: Available via environment variables, IAM role, or AWS config file
+2. **S3 Permissions**:
+   - `s3:PutObject` - Store embeddings
+   - `s3:GetObject` - Retrieve embeddings
+   - `s3:ListBucket` - List cached embeddings
+   - `s3:DeleteObject` - Cleanup old embeddings
+
+3. **Bedrock Permissions**:
+   - `bedrock:InvokeModel` - Generate embeddings using Titan Embeddings V2
+
+### Historical Safe PRs
+
+The system identifies safe PRs using the GitHub label **`automerge-safe-example`**:
+
+- Add this label to PRs that have been successfully merged and verified as safe
+- The embeddings service will use these PRs as reference examples
+- Supports up to 100 historical PRs per repository (configurable via `max_cached_prs`)
+- Automatically handles pagination when fetching more than 100 PRs from GitHub
+
+### Smart Caching and Optimization
+
+The embeddings service includes several optimizations:
+
+1. **S3 Cache**: Embeddings are cached in S3 to avoid recalculating for the same PR
+2. **Automatic Cleanup**: Removes embeddings for PRs no longer labeled as safe examples
+3. **Pagination Support**: Automatically handles GitHub API pagination for repositories with >100 safe PRs
+4. **Skip When Unnecessary**: Skips embeddings calculation when no historical PRs exist
+5. **Empty Component Handling**: Uses placeholder text for empty components (e.g., no terraform plan)
+
+### Prometheus Metrics
+
+The embeddings service automatically tracks token usage in Prometheus:
+
+- **`automerge_embeddings_input_tokens`**: Number of input tokens used by Bedrock
+  - Labels: `repo` (repository name), `model` (Bedrock model ID)
+- Metrics are pushed to the configured Prometheus Pushgateway URL
+
+### Debug Mode
+
+Enable `force_recalculate` for debugging:
+
+```json
+{
+  "embeddings": {
+    "force_recalculate": true
+  }
+}
+```
+
+⚠️ **Warning**: This bypasses all caching and recalculates embeddings for all PRs on every run. Use only for debugging. This will significantly increase AWS costs.
+
+### Cost Optimization
+
+To optimize AWS costs:
+
+1. Keep `force_recalculate` set to `false` (default)
+2. Adjust `max_cached_prs` based on your needs (fewer = lower costs)
+3. Use appropriate `similarity_boost_weight` to balance accuracy vs. computation
+4. Label only truly representative PRs as `automerge-safe-example`
+
+### Integration with AI Confidence Score
+
+When both embeddings and AI confidence score are enabled:
+
+1. AI analyzes the PR and generates a base confidence score
+2. Embeddings service calculates similarity to historical safe PRs
+3. Similarity boost is applied to the base score
+4. Final boosted score is used for auto-merge decisions
+
+The similarity boost is applied as:
+```
+boosted_score = base_score + (similarity * similarity_boost_weight * (100 - base_score))
+```
+
+### Example Configuration with Embeddings
+
+```json
+{
+  "access_token": "your_github_token",
+  "owner": "your_org",
+  "repos": ["terraform-ops"],
+  "enable_ai_confidence_score": true,
+  "enable_ai_automerge_action": true,
+  "ai_provider": "claude-code",
+  "ai_config": {
+    "claude-code": {
+      "api_base": "https://api.anthropic.com",
+      "api_key": "your_key",
+      "model": "claude-sonnet-4"
+    }
+  },
+  "embeddings": {
+    "enabled": true,
+    "s3_bucket": "automerge-embeddings-prod",
+    "aws_region": "eu-west-1",
+    "similarity_boost_weight": 0.5,
+    "max_cached_prs": 100
+  },
+  "metrics_pushgateway_url": "http://localhost:9091"
+}
+```
+
+### Troubleshooting
+
+**No embeddings calculated:**
+- Check that `embeddings.enabled` is `true`
+- Verify AWS credentials are configured
+- Ensure S3 bucket exists and has correct permissions
+- Check that historical PRs have the `automerge-safe-example` label
+
+**High AWS costs:**
+- Ensure `force_recalculate` is `false`
+- Reduce `max_cached_prs` if you have many historical PRs
+- Verify S3 cache is working (check CloudWatch for Bedrock API calls)
+
+**Bedrock API errors:**
+- Check Bedrock permissions in IAM
+- Verify the model ID `amazon.titan-embed-text-v2:0` is available in your region
+- Ensure you're within Bedrock service quotas
+
 ## Configuration Options Summary
 
 The tool now supports the following main configuration options:
 
 - **`enable_ai_confidence_score`**: Enables AI analysis for repositories in the `repos` list when PRs have diffs
-- **`enable_ai_automerge_action`**: Enables automatic merging for PRs with 100% confidence in development environments 
+- **`enable_ai_automerge_action`**: Enables automatic merging for PRs with 100% confidence in development environments
 - **`disable_pr_comments`**: When enabled, AI analysis is printed to console instead of posted as PR comments
 - **`test_prs`**: Allows testing the tool on specific PRs specified as dictionaries with `{"repo": "", "pr_number": ""}`
 - **`ai_provider`**: Chooses which AI provider to use (github or claude-code)
 - **`ai_config`**: Contains configurations for the supported AI engines
+- **`embeddings`**: Configuration for embeddings-based similarity analysis (optional)
+- **`metrics_pushgateway_url`**: Prometheus Pushgateway URL for metrics (optional)
 
 All other configuration options remain the same as before.
 

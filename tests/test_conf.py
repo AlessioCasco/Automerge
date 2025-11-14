@@ -20,7 +20,9 @@ class TestConstants:
     SAMPLE_PR_TITLE_DEPENDABOT = "[Dependabot] Bump package version"
     SAMPLE_PR_TITLE_OTHER = "Manual PR update"
 
-    SAMPLE_COMMENT_NO_CHANGES = "No changes. Your infrastructure matches the configuration"
+    SAMPLE_COMMENT_NO_CHANGES = (
+        "No changes. Your infrastructure matches the configuration"
+    )
     SAMPLE_COMMENT_WITH_CHANGES = "Plan: 1 to add, 0 to change, 0 to destroy."
     SAMPLE_COMMENT_ERROR = "Plan Error: Invalid configuration"
     SAMPLE_COMMENT_STILL_WORKING = "atlantis plan is running..."
@@ -76,6 +78,7 @@ class MockResponse:
     def raise_for_status(self):
         if self.status_code >= 400:
             import requests
+
             raise requests.exceptions.HTTPError(f"HTTP {self.status_code}")
 
 
@@ -83,11 +86,15 @@ class TestDataFactory:
     """Factory for creating test data objects."""
 
     @staticmethod
-    def create_pull_request(number=123, title=None, repo_name=None, url=None, issue_url=None):
+    def create_pull_request(
+        number=123, title=None, repo_name=None, url=None, issue_url=None
+    ):
         """Create a sample pull request dictionary."""
         repo_name = repo_name or TestConstants.DEFAULT_REPO_NAME
         title = title or TestConstants.SAMPLE_PR_TITLE_DEPS
-        base_url = f"https://api.github.com/repos/{TestConstants.DEFAULT_OWNER}/{repo_name}"
+        base_url = (
+            f"https://api.github.com/repos/{TestConstants.DEFAULT_OWNER}/{repo_name}"
+        )
 
         return {
             "number": number,
@@ -95,12 +102,8 @@ class TestDataFactory:
             "url": url or f"{base_url}/pulls/{number}",
             "issue_url": issue_url or f"{base_url}/issues/{number}",
             "comments_url": f"{base_url}/issues/{number}/comments",
-            "head": {
-                "repo": {
-                    "name": repo_name
-                }
-            },
-            "state": "open"
+            "head": {"repo": {"name": repo_name}},
+            "state": "open",
         }
 
     @staticmethod
@@ -109,9 +112,7 @@ class TestDataFactory:
         return {
             "id": comment_id,
             "body": body or TestConstants.SAMPLE_COMMENT_NO_CHANGES,
-            "user": {
-                "login": user_login or TestConstants.DEFAULT_GITHUB_USER
-            }
+            "user": {"login": user_login or TestConstants.DEFAULT_GITHUB_USER},
         }
 
     @staticmethod
@@ -120,20 +121,20 @@ class TestDataFactory:
         return {
             "id": review_id,
             "state": state,
-            "user": {
-                "login": user_login or TestConstants.DEFAULT_GITHUB_USER
-            }
+            "user": {"login": user_login or TestConstants.DEFAULT_GITHUB_USER},
         }
 
     @staticmethod
-    def create_config(access_token=None, owner=None, github_user=None, repos=None, filters=None):
+    def create_config(
+        access_token=None, owner=None, github_user=None, repos=None, filters=None
+    ):
         """Create a sample configuration dictionary."""
         return {
             "access_token": access_token or TestConstants.DEFAULT_ACCESS_TOKEN,
             "owner": owner or TestConstants.DEFAULT_OWNER,
             "github_user": github_user or TestConstants.DEFAULT_GITHUB_USER,
             "repos": repos or ["repo1", "repo2"],
-            "filters": filters or ["^\\[DEPENDENCIES\\]", "^\\[Dependabot\\]"]
+            "filters": filters or ["^\\[DEPENDENCIES\\]", "^\\[Dependabot\\]"],
         }
 
 
@@ -147,7 +148,8 @@ class TempConfigFile:
 
     def __enter__(self):
         self.temp_file = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False)
+            mode="w", suffix=".json", delete=False
+        )
         json.dump(self.config_data, self.temp_file)
         self.temp_file.close()
         self.file_path = self.temp_file.name
@@ -178,7 +180,7 @@ class TestFilters:
         return [
             cls.COMPLEX_DEPENDENCIES_FILTER,
             cls.COMPLEX_DEPENDABOT_FILTER,
-            cls.RENOVATE_FILTER
+            cls.RENOVATE_FILTER,
         ]
 
 
@@ -252,7 +254,7 @@ def create_sample_pr_scenarios():
         ),
         "no_match": TestDataFactory.create_pull_request(
             number=10, title="[DEPENDENCIES] Unknown state"
-        )
+        ),
     }
 
 
@@ -266,7 +268,7 @@ def get_sample_comment_scenarios():
         "ignore": TestConstants.SAMPLE_COMMENT_IGNORE,
         "no_project": TestConstants.SAMPLE_COMMENT_NO_PROJECT,
         "new_version": TestConstants.SAMPLE_COMMENT_NEW_VERSION,
-        "unknown": "Some comment that doesn't match any pattern"
+        "unknown": "Some comment that doesn't match any pattern",
     }
 
 
@@ -274,17 +276,21 @@ def setup_mock_github_responses():
     """Set up common mock responses for GitHub API calls."""
     return {
         "empty_prs": MockResponse([], 200),
-        "single_pr": MockResponse([
-            TestDataFactory.create_pull_request()
-        ], 200),
-        "multiple_prs": MockResponse([
-            TestDataFactory.create_pull_request(
-                1, TestConstants.SAMPLE_PR_TITLE_DEPS),
-            TestDataFactory.create_pull_request(
-                2, TestConstants.SAMPLE_PR_TITLE_DEPENDABOT),
-            TestDataFactory.create_pull_request(
-                3, TestConstants.SAMPLE_PR_TITLE_OTHER)
-        ], 200),
+        "single_pr": MockResponse([TestDataFactory.create_pull_request()], 200),
+        "multiple_prs": MockResponse(
+            [
+                TestDataFactory.create_pull_request(
+                    1, TestConstants.SAMPLE_PR_TITLE_DEPS
+                ),
+                TestDataFactory.create_pull_request(
+                    2, TestConstants.SAMPLE_PR_TITLE_DEPENDABOT
+                ),
+                TestDataFactory.create_pull_request(
+                    3, TestConstants.SAMPLE_PR_TITLE_OTHER
+                ),
+            ],
+            200,
+        ),
         "api_error_404": MockResponse({"message": "Not Found"}, 404),
         "api_error_403": MockResponse({"message": "Forbidden"}, 403),
         "api_error_500": MockResponse({"message": "Internal Server Error"}, 500),
@@ -295,22 +301,30 @@ def setup_mock_github_responses():
         "mergeable_behind": MockResponse({"mergeable_state": "behind"}, 200),
         "mergeable_blocked": MockResponse({"mergeable_state": "blocked"}, 200),
         "mergeable_unknown": MockResponse({"mergeable_state": "unknown"}, 200),
-        "approved_review": MockResponse([
-            TestDataFactory.create_review(state="APPROVED")
-        ], 200),
-        "dismissed_review": MockResponse([
-            TestDataFactory.create_review(state="DISMISSED")
-        ], 200),
+        "approved_review": MockResponse(
+            [TestDataFactory.create_review(state="APPROVED")], 200
+        ),
+        "dismissed_review": MockResponse(
+            [TestDataFactory.create_review(state="DISMISSED")], 200
+        ),
         "no_reviews": MockResponse([], 200),
-        "comments_with_no_changes": MockResponse([
-            TestDataFactory.create_comment(
-                body=TestConstants.SAMPLE_COMMENT_NO_CHANGES)
-        ], 200),
-        "comments_with_changes": MockResponse([
-            TestDataFactory.create_comment(
-                body=TestConstants.SAMPLE_COMMENT_WITH_CHANGES)
-        ], 200),
-        "no_comments": MockResponse([], 200)
+        "comments_with_no_changes": MockResponse(
+            [
+                TestDataFactory.create_comment(
+                    body=TestConstants.SAMPLE_COMMENT_NO_CHANGES
+                )
+            ],
+            200,
+        ),
+        "comments_with_changes": MockResponse(
+            [
+                TestDataFactory.create_comment(
+                    body=TestConstants.SAMPLE_COMMENT_WITH_CHANGES
+                )
+            ],
+            200,
+        ),
+        "no_comments": MockResponse([], 200),
     }
 
 

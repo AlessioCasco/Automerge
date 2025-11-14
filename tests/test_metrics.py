@@ -42,27 +42,30 @@ class TestAutomergeMetrics(unittest.TestCase):
         output_tokens = 50
 
         # Mock the gauge labels method
-        with patch.object(self.metrics.input_tokens_gauge, "labels") as mock_input_labels, \
-             patch.object(self.metrics.output_tokens_gauge, "labels") as mock_output_labels:
-
+        with (
+            patch.object(
+                self.metrics.input_tokens_gauge, "labels"
+            ) as mock_input_labels,
+            patch.object(
+                self.metrics.output_tokens_gauge, "labels"
+            ) as mock_output_labels,
+        ):
             mock_input_labels.return_value.set = Mock()
             mock_output_labels.return_value.set = Mock()
 
-            self.metrics.record_token_usage(repo, model, engine, input_tokens, output_tokens)
+            self.metrics.record_token_usage(
+                repo, model, engine, input_tokens, output_tokens
+            )
 
             # Verify input tokens gauge was called
             mock_input_labels.assert_called_once_with(
-                repo=repo,
-                model=model,
-                engine=engine
+                repo=repo, model=model, engine=engine
             )
             mock_input_labels.return_value.set.assert_called_once_with(input_tokens)
 
             # Verify output tokens gauge was called
             mock_output_labels.assert_called_once_with(
-                repo=repo,
-                model=model,
-                engine=engine
+                repo=repo, model=model, engine=engine
             )
             mock_output_labels.return_value.set.assert_called_once_with(output_tokens)
 
@@ -75,9 +78,15 @@ class TestAutomergeMetrics(unittest.TestCase):
         output_tokens = 50
 
         # Mock the gauge to raise an exception
-        with patch.object(self.metrics.input_tokens_gauge, "labels", side_effect=Exception("Test error")):
+        with patch.object(
+            self.metrics.input_tokens_gauge,
+            "labels",
+            side_effect=Exception("Test error"),
+        ):
             # Should not raise exception
-            self.metrics.record_token_usage(repo, model, engine, input_tokens, output_tokens)
+            self.metrics.record_token_usage(
+                repo, model, engine, input_tokens, output_tokens
+            )
 
     @patch("src.metrics.push_to_gateway")
     def test_push_metrics_success(self, mock_push_to_gateway):
@@ -86,7 +95,7 @@ class TestAutomergeMetrics(unittest.TestCase):
         mock_push_to_gateway.assert_called_once_with(
             self.pushgateway_url,
             job=self.metrics.job_name,
-            registry=self.metrics.registry
+            registry=self.metrics.registry,
         )
 
     @patch("src.metrics.push_to_gateway")
@@ -112,26 +121,39 @@ class TestAutomergeMetrics(unittest.TestCase):
         mock_sample.labels = {
             "repo": "test-repo",
             "model": "claude-sonnet-4",
-            "engine": "claude-code"
+            "engine": "claude-code",
         }
         mock_sample.value = 100
 
         mock_metric = Mock()
         mock_metric.samples = [mock_sample]
 
-        with patch.object(self.metrics.input_tokens_gauge, "collect", return_value=[mock_metric]), \
-             patch.object(self.metrics.output_tokens_gauge, "collect", return_value=[mock_metric]):
-
+        with (
+            patch.object(
+                self.metrics.input_tokens_gauge, "collect", return_value=[mock_metric]
+            ),
+            patch.object(
+                self.metrics.output_tokens_gauge, "collect", return_value=[mock_metric]
+            ),
+        ):
             summary = self.metrics.get_metrics_summary()
 
             self.assertIn("input_tokens", summary)
             self.assertIn("output_tokens", summary)
-            self.assertIn("test-repo_claude-sonnet-4_claude-code", summary["input_tokens"])
-            self.assertIn("test-repo_claude-sonnet-4_claude-code", summary["output_tokens"])
+            self.assertIn(
+                "test-repo_claude-sonnet-4_claude-code", summary["input_tokens"]
+            )
+            self.assertIn(
+                "test-repo_claude-sonnet-4_claude-code", summary["output_tokens"]
+            )
 
     def test_get_metrics_summary_with_exception(self):
         """Test getting metrics summary with exception handling."""
-        with patch.object(self.metrics.input_tokens_gauge, "collect", side_effect=Exception("Test error")):
+        with patch.object(
+            self.metrics.input_tokens_gauge,
+            "collect",
+            side_effect=Exception("Test error"),
+        ):
             summary = self.metrics.get_metrics_summary()
             self.assertEqual(summary, {"input_tokens": {}, "output_tokens": {}})
 
@@ -150,9 +172,14 @@ class TestMetricsIntegration(unittest.TestCase):
         model = "claude-sonnet-4"
         engine = "github-copilot"  # Test with hyphenated engine name
 
-        with patch.object(self.metrics.input_tokens_gauge, "labels") as mock_input_labels, \
-             patch.object(self.metrics.output_tokens_gauge, "labels") as mock_output_labels:
-
+        with (
+            patch.object(
+                self.metrics.input_tokens_gauge, "labels"
+            ) as mock_input_labels,
+            patch.object(
+                self.metrics.output_tokens_gauge, "labels"
+            ) as mock_output_labels,
+        ):
             mock_input_labels.return_value.set = Mock()
             mock_output_labels.return_value.set = Mock()
 
@@ -160,9 +187,7 @@ class TestMetricsIntegration(unittest.TestCase):
 
             # Verify labels are correctly formatted
             mock_input_labels.assert_called_once_with(
-                repo="test-repo",
-                model="claude-sonnet-4",
-                engine="github-copilot"
+                repo="test-repo", model="claude-sonnet-4", engine="github-copilot"
             )
 
     def test_metrics_with_special_characters(self):
@@ -171,9 +196,14 @@ class TestMetricsIntegration(unittest.TestCase):
         model = "claude-sonnet-4"
         engine = "claude-code"
 
-        with patch.object(self.metrics.input_tokens_gauge, "labels") as mock_input_labels, \
-             patch.object(self.metrics.output_tokens_gauge, "labels") as mock_output_labels:
-
+        with (
+            patch.object(
+                self.metrics.input_tokens_gauge, "labels"
+            ) as mock_input_labels,
+            patch.object(
+                self.metrics.output_tokens_gauge, "labels"
+            ) as mock_output_labels,
+        ):
             mock_input_labels.return_value.set = Mock()
             mock_output_labels.return_value.set = Mock()
 
@@ -183,7 +213,7 @@ class TestMetricsIntegration(unittest.TestCase):
             mock_input_labels.assert_called_once_with(
                 repo="test-repo_with-special.chars",
                 model="claude-sonnet-4",
-                engine="claude-code"
+                engine="claude-code",
             )
 
 

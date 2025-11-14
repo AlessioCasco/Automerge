@@ -1,9 +1,11 @@
+boto3==1.35.86
 certifi==2025.8.3
 charset-normalizer==3.4.3
 coverage==7.10.5
 idna==3.10
 markdown-it-py==3.0.0
 mdurl==0.1.2
+numpy==2.2.3
 prometheus-client==0.21.1
 Pygments==2.19.2
 requests==2.32.5

@@ -5,6 +5,19 @@ import logging
 import os
 from typing import Dict, Any, Union
 
+try:
+    from .utils import (
+        DEFAULT_EMBEDDINGS_MAX_CACHED_PRS,
+        DEFAULT_EMBEDDINGS_SIMILARITY_BOOST_WEIGHT,
+        DEFAULT_EMBEDDINGS_AWS_REGION,
+    )
+except ImportError:
+    from utils import (
+        DEFAULT_EMBEDDINGS_MAX_CACHED_PRS,
+        DEFAULT_EMBEDDINGS_SIMILARITY_BOOST_WEIGHT,
+        DEFAULT_EMBEDDINGS_AWS_REGION,
+    )
+
 # Set up logger
 logger = logging.getLogger(__name__)
 
@@ -66,8 +79,7 @@ def validate_config(config: Dict[str, Any]) -> None:
         ValueError: If configuration is invalid or required keys are missing
         TypeError: If configuration values have incorrect types
     """
-    required_keys = ["access_token", "owner",
-                     "github_user", "repos", "filters"]
+    required_keys = ["access_token", "owner", "github_user", "repos", "filters"]
 
     for key in required_keys:
         if key not in config:
@@ -92,13 +104,17 @@ def validate_config(config: Dict[str, Any]) -> None:
     for i, repo in enumerate(config["repos"]):
         if not isinstance(repo, str) or not repo.strip():
             repo_type = type(repo).__name__
-            raise ValueError(f"Repository at index {i} must be a non-empty string, found: {repo_type}")
+            raise ValueError(
+                f"Repository at index {i} must be a non-empty string, found: {repo_type}"
+            )
 
     # Validate that all filters are strings
     for i, filter_pattern in enumerate(config["filters"]):
         if not isinstance(filter_pattern, str) or not filter_pattern.strip():
             filter_type = type(filter_pattern).__name__
-            raise ValueError(f"Filter at index {i} must be a non-empty string, found: {filter_type}")
+            raise ValueError(
+                f"Filter at index {i} must be a non-empty string, found: {filter_type}"
+            )
 
     # Validate optional AI configuration
     if "enable_ai_confidence_score" in config:
@@ -116,13 +132,17 @@ def validate_config(config: Dict[str, Any]) -> None:
     # Validate AI provider configuration if AI is enabled
     if config.get("enable_ai_confidence_score", False):
         if "ai_provider" not in config:
-            raise ValueError("ai_provider is required when enable_ai_confidence_score is true")
+            raise ValueError(
+                "ai_provider is required when enable_ai_confidence_score is true"
+            )
 
         if config["ai_provider"] not in ["github", "claude-code"]:
             raise ValueError("ai_provider must be either 'github' or 'claude-code'")
 
         if "ai_config" not in config:
-            raise ValueError("ai_config is required when enable_ai_confidence_score is true")
+            raise ValueError(
+                "ai_config is required when enable_ai_confidence_score is true"
+            )
 
         ai_config = config["ai_config"]
         provider = config["ai_provider"]
@@ -148,7 +168,9 @@ def validate_config(config: Dict[str, Any]) -> None:
     # Validate AI auto-merge configuration
     if config.get("enable_ai_automerge_action", False):
         if not config.get("enable_ai_confidence_score", False):
-            raise ValueError("enable_ai_automerge_action requires enable_ai_confidence_score to be true")
+            raise ValueError(
+                "enable_ai_automerge_action requires enable_ai_confidence_score to be true"
+            )
 
     # Validate minimum confidence score configuration
     if "minimum_confidence_score" in config:
@@ -165,16 +187,25 @@ def validate_config(config: Dict[str, Any]) -> None:
             raise ValueError("auto_merge_environments cannot be empty")
         for i, env in enumerate(config["auto_merge_environments"]):
             if not isinstance(env, str) or not env.strip():
-                raise ValueError(f"auto_merge_environments[{i}] must be a non-empty string")
+                raise ValueError(
+                    f"auto_merge_environments[{i}] must be a non-empty string"
+                )
 
     # Validate metrics configuration
     if "metrics_pushgateway_url" in config:
-        if config["metrics_pushgateway_url"] is not None and not isinstance(config["metrics_pushgateway_url"], str):
+        if config["metrics_pushgateway_url"] is not None and not isinstance(
+            config["metrics_pushgateway_url"], str
+        ):
             raise ValueError("metrics_pushgateway_url must be a string")
-        if config["metrics_pushgateway_url"] and config["metrics_pushgateway_url"].strip():
+        if (
+            config["metrics_pushgateway_url"]
+            and config["metrics_pushgateway_url"].strip()
+        ):
             url = config["metrics_pushgateway_url"].strip()
             if not url.startswith(("http://", "https://")):
-                raise ValueError("metrics_pushgateway_url must start with http:// or https://")
+                raise ValueError(
+                    "metrics_pushgateway_url must start with http:// or https://"
+                )
             # Check that there's more than just the protocol
             if url in ("http://", "https://"):
                 raise ValueError("metrics_pushgateway_url must include hostname")
@@ -189,13 +220,70 @@ def validate_config(config: Dict[str, Any]) -> None:
                 raise ValueError(f"test_pr at index {i} must be a dictionary")
 
             if "repo" not in test_pr or "pr_number" not in test_pr:
-                raise ValueError(f"test_pr at index {i} must contain 'repo' and 'pr_number' keys")
+                raise ValueError(
+                    f"test_pr at index {i} must contain 'repo' and 'pr_number' keys"
+                )
 
             if not isinstance(test_pr["repo"], str) or not test_pr["repo"].strip():
-                raise ValueError(f"test_pr repo at index {i} must be a non-empty string")
+                raise ValueError(
+                    f"test_pr repo at index {i} must be a non-empty string"
+                )
 
             if not isinstance(test_pr["pr_number"], int) or test_pr["pr_number"] <= 0:
-                raise ValueError(f"test_pr pr_number at index {i} must be a positive integer")
+                raise ValueError(
+                    f"test_pr pr_number at index {i} must be a positive integer"
+                )
+
+    # Validate embeddings configuration
+    if "embeddings" in config:
+        embeddings_config = config["embeddings"]
+
+        if not isinstance(embeddings_config, dict):
+            raise ValueError("embeddings must be a dictionary")
+
+        if "enabled" in embeddings_config:
+            if not isinstance(embeddings_config["enabled"], bool):
+                raise ValueError("embeddings.enabled must be a boolean")
+
+        if embeddings_config.get("enabled", False):
+            # Required fields when embeddings are enabled
+            if "s3_bucket" not in embeddings_config:
+                raise ValueError(
+                    "embeddings.s3_bucket is required when embeddings are enabled"
+                )
+
+            if (
+                not isinstance(embeddings_config["s3_bucket"], str)
+                or not embeddings_config["s3_bucket"].strip()
+            ):
+                raise ValueError("embeddings.s3_bucket must be a non-empty string")
+
+            # Optional fields with validation
+            if "aws_region" in embeddings_config:
+                if not isinstance(embeddings_config["aws_region"], str):
+                    raise ValueError("embeddings.aws_region must be a string")
+
+            if "similarity_boost_weight" in embeddings_config:
+                if not isinstance(
+                    embeddings_config["similarity_boost_weight"], (int, float)
+                ):
+                    raise ValueError(
+                        "embeddings.similarity_boost_weight must be a number"
+                    )
+                if not (0 <= embeddings_config["similarity_boost_weight"] <= 2.0):
+                    raise ValueError(
+                        "embeddings.similarity_boost_weight must be between 0 and 2.0"
+                    )
+
+            if "max_cached_prs" in embeddings_config:
+                if not isinstance(embeddings_config["max_cached_prs"], int):
+                    raise ValueError("embeddings.max_cached_prs must be an integer")
+                if embeddings_config["max_cached_prs"] < 1:
+                    raise ValueError("embeddings.max_cached_prs must be at least 1")
+
+            if "force_recalculate" in embeddings_config:
+                if not isinstance(embeddings_config["force_recalculate"], bool):
+                    raise ValueError("embeddings.force_recalculate must be a boolean")
 
 
 def load_and_validate_config(config_file: str) -> Dict[str, Any]:
@@ -219,18 +307,48 @@ def load_and_validate_config(config_file: str) -> Dict[str, Any]:
         config["minimum_confidence_score"] = 100  # Default to 100% for safety
 
     if "auto_merge_environments" not in config:
-        config["auto_merge_environments"] = ["development"]  # Default to development only
+        config["auto_merge_environments"] = [
+            "development"
+        ]  # Default to development only
 
     if "metrics_pushgateway_url" not in config:
         config["metrics_pushgateway_url"] = None  # Default to disabled metrics
+
+    # Set default embeddings configuration
+    if "embeddings" not in config:
+        config["embeddings"] = {
+            "enabled": False,
+            "s3_bucket": "",
+            "aws_region": DEFAULT_EMBEDDINGS_AWS_REGION,
+            "similarity_boost_weight": DEFAULT_EMBEDDINGS_SIMILARITY_BOOST_WEIGHT,
+            "max_cached_prs": DEFAULT_EMBEDDINGS_MAX_CACHED_PRS,
+            "force_recalculate": False,
+        }
+    else:
+        # Ensure force_recalculate has a default value if not specified
+        if "force_recalculate" not in config["embeddings"]:
+            config["embeddings"]["force_recalculate"] = False
+        # Ensure other fields have default values if not specified
+        if "aws_region" not in config["embeddings"]:
+            config["embeddings"]["aws_region"] = DEFAULT_EMBEDDINGS_AWS_REGION
+        if "similarity_boost_weight" not in config["embeddings"]:
+            config["embeddings"][
+                "similarity_boost_weight"
+            ] = DEFAULT_EMBEDDINGS_SIMILARITY_BOOST_WEIGHT
+        if "max_cached_prs" not in config["embeddings"]:
+            config["embeddings"]["max_cached_prs"] = DEFAULT_EMBEDDINGS_MAX_CACHED_PRS
 
     validate_config(config)
 
     # Override with environment variables if present
     if os.environ.get("ENABLE_AI_CONFIDENCE_SCORE"):
-        config["enable_ai_confidence_score"] = os.environ.get("ENABLE_AI_CONFIDENCE_SCORE").lower() == "true"
+        config["enable_ai_confidence_score"] = (
+            os.environ.get("ENABLE_AI_CONFIDENCE_SCORE").lower() == "true"
+        )
 
     if os.environ.get("ENABLE_AI_AUTOMERGE_ACTION"):
-        config["enable_ai_automerge_action"] = os.environ.get("ENABLE_AI_AUTOMERGE_ACTION").lower() == "true"
+        config["enable_ai_automerge_action"] = (
+            os.environ.get("ENABLE_AI_AUTOMERGE_ACTION").lower() == "true"
+        )
 
     return config

@@ -15,7 +15,7 @@ from utils import (  # noqa: E402
     COMMENT_ATLANTIS_PLAN,
     COMMENT_ATLANTIS_UNLOCK,
     COMMENT_IGNORE_AUTOMERGE,
-    COMMENT_CLOSE_NEW_VERSION
+    COMMENT_CLOSE_NEW_VERSION,
 )
 
 
@@ -35,9 +35,9 @@ class TestPRProcessorInit(unittest.TestCase):
             "ai_config": {
                 "github": {
                     "api_base": "http://localhost:4141",
-                    "model": "claude-sonnet-4"
+                    "model": "claude-sonnet-4",
                 }
-            }
+            },
         }
         processor = PRProcessor(mock_client, mock_config)
 
@@ -65,47 +65,52 @@ class TestPRProcessorInit(unittest.TestCase):
             "ai_config": {
                 "github": {
                     "api_base": "http://localhost:4141",
-                    "model": "claude-sonnet-4"
+                    "model": "claude-sonnet-4",
                 }
-            }
+            },
         }
         processor = PRProcessor(mock_client, mock_config)
 
         # Test each regex pattern with sample text
         test_cases = [
-            (processor.regexp_pr_diff,
-             "Plan: 1 to add, 0 to change, 0 to destroy.", True),
+            (
+                processor.regexp_pr_diff,
+                "Plan: 1 to add, 0 to change, 0 to destroy.",
+                True,
+            ),
             (processor.regexp_pr_diff, "Changes to Outputs", True),
             (processor.regexp_pr_diff, "No changes found", False),
-
-            (processor.regexp_pr_no_changes,
-             "No changes. Your infrastructure matches the configuration", True),
+            (
+                processor.regexp_pr_no_changes,
+                "No changes. Your infrastructure matches the configuration",
+                True,
+            ),
             (processor.regexp_pr_no_changes, "Apply complete!", True),
             (processor.regexp_pr_no_changes, "Plan: 1 to add", False),
-
             (processor.regexp_pr_ignore, "This PR will be ignored by automerge", True),
             (processor.regexp_pr_ignore, "This will be processed", False),
-
             (processor.regexp_pr_error, "Plan Error", True),
             (processor.regexp_pr_error, "Plan Failed", True),
             (processor.regexp_pr_error, "Apply Failed", True),
             (processor.regexp_pr_error, "Apply Error", True),
             (processor.regexp_pr_error, "Plan succeeded", False),
-
             (processor.regexp_pr_still_working, "atlantis plan", True),
             (processor.regexp_pr_still_working, "atlantis apply", True),
             (processor.regexp_pr_still_working, "atlantis unlock", False),
-
             (processor.regexp_pr_no_project, "Ran Plan for 0 projects", True),
             (processor.regexp_pr_no_project, "Ran Plan for 1 projects", False),
-
-            (processor.regexp_new_version,
-             "A newer version of terraform is available", True),
+            (
+                processor.regexp_new_version,
+                "A newer version of terraform is available",
+                True,
+            ),
             (processor.regexp_new_version, "Current version is latest", False),
         ]
 
         for regex, text, should_match in test_cases:
-            with self.subTest(regex=regex.pattern, text=text, should_match=should_match):
+            with self.subTest(
+                regex=regex.pattern, text=text, should_match=should_match
+            ):
                 result = bool(regex.search(text))
                 self.assertEqual(result, should_match)
 
@@ -125,9 +130,9 @@ class TestCreatePRLists(unittest.TestCase):
             "ai_config": {
                 "github": {
                     "api_base": "http://localhost:4141",
-                    "model": "claude-sonnet-4"
+                    "model": "claude-sonnet-4",
                 }
-            }
+            },
         }
         self.processor = PRProcessor(self.mock_client, self.mock_config)
 
@@ -135,11 +140,7 @@ class TestCreatePRLists(unittest.TestCase):
             "number": 123,
             "url": "https://api.github.com/repos/owner/repo/pulls/123",
             "issue_url": "https://api.github.com/repos/owner/repo/issues/123",
-            "head": {
-                "repo": {
-                    "name": "test-repo"
-                }
-            }
+            "head": {"repo": {"name": "test-repo"}},
         }
 
     def test_create_pr_lists_dismissed_pr(self):
@@ -157,8 +158,7 @@ class TestCreatePRLists(unittest.TestCase):
         self.assertEqual(len(error), 0)
         self.assertEqual(len(to_be_closed), 0)
 
-        self.mock_client.is_approved.assert_called_once_with(
-            self.sample_pr["url"])
+        self.mock_client.is_approved.assert_called_once_with(self.sample_pr["url"])
         # Check that the processor logged about the dismissed PR instead of printing
         # Note: Since we're using logging now, we don't mock print calls
 
@@ -176,8 +176,8 @@ class TestCreatePRLists(unittest.TestCase):
         self.assertEqual(len(dismissed), 0)
 
         self.mock_client.get_last_comment.assert_called_once_with(
-            self.sample_pr["issue_url"])
-
+            self.sample_pr["issue_url"]
+        )
 
     def test_create_pr_lists_no_changes(self):
         """Test categorizing PR with no changes."""
@@ -192,7 +192,6 @@ class TestCreatePRLists(unittest.TestCase):
         self.assertEqual(len(no_changes), 1)
         self.assertEqual(no_changes[0], self.sample_pr)
 
-
     def test_create_pr_lists_force_mode(self):
         """Test categorizing PR in force mode."""
         self.mock_client.is_approved.return_value = True
@@ -200,14 +199,12 @@ class TestCreatePRLists(unittest.TestCase):
             "body": "Plan: 1 to add, 0 to change, 0 to destroy."
         }
 
-        result = self.processor.create_pr_lists(
-            [self.sample_pr], True)  # force=True
+        result = self.processor.create_pr_lists([self.sample_pr], True)  # force=True
         no_comments, with_diffs, no_changes, error, to_be_closed, dismissed = result
 
         self.assertEqual(len(no_comments), 1)
         self.assertEqual(no_comments[0], self.sample_pr)
         self.assertEqual(len(with_diffs), 0)
-
 
     def test_create_pr_lists_with_diffs(self):
         """Test categorizing PR with diffs."""
@@ -222,7 +219,6 @@ class TestCreatePRLists(unittest.TestCase):
         self.assertEqual(len(with_diffs), 1)
         self.assertEqual(with_diffs[0], self.sample_pr)
 
-
     def test_create_pr_lists_with_error(self):
         """Test categorizing PR with error."""
         self.mock_client.is_approved.return_value = True
@@ -236,7 +232,6 @@ class TestCreatePRLists(unittest.TestCase):
         self.assertEqual(len(error), 1)
         self.assertEqual(error[0], self.sample_pr)
 
-
     def test_create_pr_lists_new_version(self):
         """Test categorizing PR with new version available."""
         self.mock_client.is_approved.return_value = True
@@ -249,7 +244,6 @@ class TestCreatePRLists(unittest.TestCase):
 
         self.assertEqual(len(to_be_closed), 1)
         self.assertEqual(to_be_closed[0], self.sample_pr)
-
 
     def test_create_pr_lists_still_working(self):
         """Test categorizing PR where Atlantis is still working."""
@@ -269,7 +263,6 @@ class TestCreatePRLists(unittest.TestCase):
         self.assertEqual(len(to_be_closed), 0)
         self.assertEqual(len(dismissed), 0)
 
-
     def test_create_pr_lists_ignore(self):
         """Test categorizing PR that should be ignored."""
         self.mock_client.is_approved.return_value = True
@@ -288,7 +281,6 @@ class TestCreatePRLists(unittest.TestCase):
         self.assertEqual(len(to_be_closed), 0)
         self.assertEqual(len(dismissed), 0)
 
-
     def test_create_pr_lists_no_project(self):
         """Test categorizing PR with no projects."""
         self.mock_client.is_approved.return_value = True
@@ -302,7 +294,8 @@ class TestCreatePRLists(unittest.TestCase):
         # PR should not be in any list, but should have label set
         self.assertEqual(len(no_comments), 0)
         self.mock_client.set_label_to_pull_request.assert_called_once_with(
-            [self.sample_pr], LABEL_AUTOMERGE_NO_PROJECT)
+            [self.sample_pr], LABEL_AUTOMERGE_NO_PROJECT
+        )
 
     def test_create_pr_lists_no_match(self):
         """Test categorizing PR that doesn't match any pattern."""
@@ -330,15 +323,13 @@ class TestCreatePRLists(unittest.TestCase):
         pr2 = {**self.sample_pr, "number": 2}
         pr3 = {**self.sample_pr, "number": 3}
 
-        self.mock_client.is_approved.side_effect = [
-            True, True, REVIEW_STATE_DISMISSED]
+        self.mock_client.is_approved.side_effect = [True, True, REVIEW_STATE_DISMISSED]
         self.mock_client.get_last_comment.side_effect = [
             None,  # pr1: no comments
             # pr2: no changes
             {"body": "No changes. Your infrastructure matches the configuration"},
-            None   # pr3: won't be called due to dismissed state
+            None,  # pr3: won't be called due to dismissed state
         ]
-
 
         result = self.processor.create_pr_lists([pr1, pr2, pr3], False)
 
@@ -367,9 +358,9 @@ class TestProcessPRs(unittest.TestCase):
             "ai_config": {
                 "github": {
                     "api_base": "http://localhost:4141",
-                    "model": "claude-sonnet-4"
+                    "model": "claude-sonnet-4",
                 }
-            }
+            },
         }
         self.processor = PRProcessor(self.mock_client, self.mock_config)
 
@@ -377,11 +368,7 @@ class TestProcessPRs(unittest.TestCase):
             "number": 123,
             "url": "https://api.github.com/repos/owner/repo/pulls/123",
             "issue_url": "https://api.github.com/repos/owner/repo/issues/123",
-            "head": {
-                "repo": {
-                    "name": "test-repo"
-                }
-            }
+            "head": {"repo": {"name": "test-repo"}},
         }
 
     @patch.object(PRProcessor, "create_pr_lists")
@@ -391,8 +378,7 @@ class TestProcessPRs(unittest.TestCase):
 
         self.processor.process_prs([self.sample_pr], False)
 
-        self.mock_client.merge_pull_req.assert_called_once_with(
-            [self.sample_pr])
+        self.mock_client.merge_pull_req.assert_called_once_with([self.sample_pr])
         # Note: We're no longer checking print calls since we use logging
 
     @patch.object(PRProcessor, "create_pr_lists")
@@ -402,8 +388,7 @@ class TestProcessPRs(unittest.TestCase):
 
         self.processor.process_prs([self.sample_pr], False)
 
-        self.mock_client.process_dismissed_prs.assert_called_once_with([
-                                                                       self.sample_pr])
+        self.mock_client.process_dismissed_prs.assert_called_once_with([self.sample_pr])
         # Note: We're no longer checking print calls since we use logging
 
     @patch.object(PRProcessor, "create_pr_lists")
@@ -414,9 +399,11 @@ class TestProcessPRs(unittest.TestCase):
         self.processor.process_prs([self.sample_pr], False)
 
         self.mock_client.multi_comments_pull_req.assert_called_once_with(
-            [self.sample_pr], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
+            [self.sample_pr], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE
+        )
         self.mock_client.set_label_to_pull_request.assert_called_once_with(
-            [self.sample_pr], LABEL_AUTOMERGE_IGNORE)
+            [self.sample_pr], LABEL_AUTOMERGE_IGNORE
+        )
         # Note: We're no longer checking print calls since we use logging
 
     @patch.object(PRProcessor, "create_pr_lists")
@@ -428,10 +415,11 @@ class TestProcessPRs(unittest.TestCase):
         self.processor.process_prs([self.sample_pr], False)
 
         self.mock_client.get_mergeable_state.assert_called_once_with(
-            self.sample_pr["url"])
+            self.sample_pr["url"]
+        )
         self.mock_client.comment_pull_req.assert_called_once_with(
-            [self.sample_pr], COMMENT_ATLANTIS_PLAN)
-
+            [self.sample_pr], COMMENT_ATLANTIS_PLAN
+        )
 
     @patch.object(PRProcessor, "create_pr_lists")
     def test_process_prs_plan_error(self, mock_create_lists):
@@ -442,7 +430,8 @@ class TestProcessPRs(unittest.TestCase):
         self.processor.process_prs([self.sample_pr], False)
 
         self.mock_client.comment_pull_req.assert_called_once_with(
-            [self.sample_pr], COMMENT_ATLANTIS_PLAN)
+            [self.sample_pr], COMMENT_ATLANTIS_PLAN
+        )
 
     @patch.object(PRProcessor, "create_pr_lists")
     def test_process_prs_dirty_state(self, mock_create_lists):
@@ -453,9 +442,11 @@ class TestProcessPRs(unittest.TestCase):
         self.processor.process_prs([self.sample_pr], False)
 
         self.mock_client.multi_comments_pull_req.assert_called_once_with(
-            [self.sample_pr], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
+            [self.sample_pr], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE
+        )
         self.mock_client.set_label_to_pull_request.assert_called_once_with(
-            [self.sample_pr], LABEL_AUTOMERGE_CONFLICT)
+            [self.sample_pr], LABEL_AUTOMERGE_CONFLICT
+        )
         # Should not call comment_pull_req for planning
         self.mock_client.comment_pull_req.assert_not_called()
 
@@ -467,10 +458,9 @@ class TestProcessPRs(unittest.TestCase):
         self.processor.process_prs([self.sample_pr], False)
 
         self.mock_client.multi_comments_pull_req.assert_called_once_with(
-            [self.sample_pr], COMMENT_CLOSE_NEW_VERSION, COMMENT_ATLANTIS_UNLOCK)
-        self.mock_client.close_pull_requests.assert_called_once_with([
-                                                                     self.sample_pr])
-
+            [self.sample_pr], COMMENT_CLOSE_NEW_VERSION, COMMENT_ATLANTIS_UNLOCK
+        )
+        self.mock_client.close_pull_requests.assert_called_once_with([self.sample_pr])
 
     @patch.object(PRProcessor, "create_pr_lists")
     def test_process_prs_mixed_scenarios(self, mock_create_lists):
@@ -481,12 +471,12 @@ class TestProcessPRs(unittest.TestCase):
         pr4 = {**self.sample_pr, "number": 4}
 
         mock_create_lists.return_value = (
-            [pr1],        # no_comments
-            [pr2],        # with_diffs
-            [pr3],        # no_changes
-            [],           # error
-            [pr4],        # to_be_closed
-            []            # dismissed
+            [pr1],  # no_comments
+            [pr2],  # with_diffs
+            [pr3],  # no_changes
+            [],  # error
+            [pr4],  # to_be_closed
+            [],  # dismissed
         )
         self.mock_client.get_mergeable_state.return_value = "clean"
 
@@ -495,11 +485,14 @@ class TestProcessPRs(unittest.TestCase):
         # Verify all operations were called
         self.mock_client.merge_pull_req.assert_called_once_with([pr3])
         self.mock_client.multi_comments_pull_req.assert_any_call(
-            [pr2], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
+            [pr2], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE
+        )
         self.mock_client.multi_comments_pull_req.assert_any_call(
-            [pr4], COMMENT_CLOSE_NEW_VERSION, COMMENT_ATLANTIS_UNLOCK)
+            [pr4], COMMENT_CLOSE_NEW_VERSION, COMMENT_ATLANTIS_UNLOCK
+        )
         self.mock_client.comment_pull_req.assert_called_once_with(
-            [pr1], COMMENT_ATLANTIS_PLAN)
+            [pr1], COMMENT_ATLANTIS_PLAN
+        )
         self.mock_client.close_pull_requests.assert_called_once_with([pr4])
 
     @patch.object(PRProcessor, "create_pr_lists")
@@ -533,9 +526,9 @@ class TestPRProcessorEdgeCases(unittest.TestCase):
             "ai_config": {
                 "github": {
                     "api_base": "http://localhost:4141",
-                    "model": "claude-sonnet-4"
+                    "model": "claude-sonnet-4",
                 }
-            }
+            },
         }
         self.processor = PRProcessor(self.mock_client, self.mock_config)
 
@@ -559,7 +552,7 @@ class TestPRProcessorEdgeCases(unittest.TestCase):
             "number": 123,
             "url": "https://api.github.com/repos/owner/repo/pulls/123",
             "issue_url": "https://api.github.com/repos/owner/repo/issues/123",
-            "head": {"repo": {"name": "test-repo"}}
+            "head": {"repo": {"name": "test-repo"}},
         }
 
         self.mock_client.is_approved.side_effect = Exception("API Error")
@@ -573,17 +566,15 @@ class TestPRProcessorEdgeCases(unittest.TestCase):
             "number": 123,
             "url": "https://api.github.com/repos/owner/repo/pulls/123",
             "issue_url": "https://api.github.com/repos/owner/repo/issues/123",
-            "head": {"repo": {"name": "test-repo"}}
+            "head": {"repo": {"name": "test-repo"}},
         }
 
         with patch.object(self.processor, "create_pr_lists") as mock_create_lists:
             mock_create_lists.return_value = ([], [], [sample_pr], [], [], [])
-            self.mock_client.merge_pull_req.side_effect = Exception(
-                "Merge failed")
+            self.mock_client.merge_pull_req.side_effect = Exception("Merge failed")
 
             with self.assertRaises(Exception):
                 self.processor.process_prs([sample_pr], False)
-
 
     def test_comment_body_none(self):
         """Test handling when comment body is None."""
@@ -591,7 +582,7 @@ class TestPRProcessorEdgeCases(unittest.TestCase):
             "number": 123,
             "url": "https://api.github.com/repos/owner/repo/pulls/123",
             "issue_url": "https://api.github.com/repos/owner/repo/issues/123",
-            "head": {"repo": {"name": "test-repo"}}
+            "head": {"repo": {"name": "test-repo"}},
         }
 
         self.mock_client.is_approved.return_value = True
@@ -602,19 +593,17 @@ class TestPRProcessorEdgeCases(unittest.TestCase):
             # The regex search will fail on None, which is expected behavior
             self.processor.create_pr_lists([sample_pr], False)
 
-
     def test_comment_missing_body_key(self):
         """Test handling when comment doesn't have body key."""
         sample_pr = {
             "number": 123,
             "url": "https://api.github.com/repos/owner/repo/pulls/123",
             "issue_url": "https://api.github.com/repos/owner/repo/issues/123",
-            "head": {"repo": {"name": "test-repo"}}
+            "head": {"repo": {"name": "test-repo"}},
         }
 
         self.mock_client.is_approved.return_value = True
-        self.mock_client.get_last_comment.return_value = {
-            "id": 12345}  # No body key
+        self.mock_client.get_last_comment.return_value = {"id": 12345}  # No body key
 
         # Should raise KeyError when trying to access body
         with self.assertRaises(KeyError):
@@ -636,27 +625,32 @@ class TestPRProcessorIntegration(unittest.TestCase):
             "ai_config": {
                 "github": {
                     "api_base": "http://localhost:4141",
-                    "model": "claude-sonnet-4"
+                    "model": "claude-sonnet-4",
                 }
-            }
+            },
         }
         self.processor = PRProcessor(self.mock_client, self.mock_config)
-
 
     def test_full_workflow_typical_scenario(self):
         """Test full workflow with typical scenario."""
         # Create PRs representing different states
         pr_no_comment = {
-            "number": 1, "url": "url1", "issue_url": "issue1",
-            "head": {"repo": {"name": "repo1"}}
+            "number": 1,
+            "url": "url1",
+            "issue_url": "issue1",
+            "head": {"repo": {"name": "repo1"}},
         }
         pr_no_changes = {
-            "number": 2, "url": "url2", "issue_url": "issue2",
-            "head": {"repo": {"name": "repo2"}}
+            "number": 2,
+            "url": "url2",
+            "issue_url": "issue2",
+            "head": {"repo": {"name": "repo2"}},
         }
         pr_with_diffs = {
-            "number": 3, "url": "url3", "issue_url": "issue3",
-            "head": {"repo": {"name": "repo3"}}
+            "number": 3,
+            "url": "url3",
+            "issue_url": "issue3",
+            "head": {"repo": {"name": "repo3"}},
         }
 
         all_prs = [pr_no_comment, pr_no_changes, pr_with_diffs]
@@ -667,7 +661,7 @@ class TestPRProcessorIntegration(unittest.TestCase):
             None,  # pr1: no comment
             # pr2: no changes
             {"body": "No changes. Your infrastructure matches the configuration"},
-            {"body": "Plan: 1 to add, 0 to change, 0 to destroy."}  # pr3: diffs
+            {"body": "Plan: 1 to add, 0 to change, 0 to destroy."},  # pr3: diffs
         ]
         self.mock_client.get_mergeable_state.return_value = "clean"
 
@@ -675,14 +669,16 @@ class TestPRProcessorIntegration(unittest.TestCase):
         self.processor.process_prs(all_prs, False)
 
         # Verify expected calls
-        self.mock_client.merge_pull_req.assert_called_once_with([
-                                                                pr_no_changes])
+        self.mock_client.merge_pull_req.assert_called_once_with([pr_no_changes])
         self.mock_client.comment_pull_req.assert_called_once_with(
-            [pr_no_comment], COMMENT_ATLANTIS_PLAN)
+            [pr_no_comment], COMMENT_ATLANTIS_PLAN
+        )
         self.mock_client.multi_comments_pull_req.assert_called_once_with(
-            [pr_with_diffs], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
+            [pr_with_diffs], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE
+        )
         self.mock_client.set_label_to_pull_request.assert_called_once_with(
-            [pr_with_diffs], LABEL_AUTOMERGE_IGNORE)
+            [pr_with_diffs], LABEL_AUTOMERGE_IGNORE
+        )
 
 
 class TestAIDisableFunctionality(unittest.TestCase):
@@ -701,9 +697,9 @@ class TestAIDisableFunctionality(unittest.TestCase):
             "ai_config": {
                 "github": {
                     "api_base": "http://localhost:4141",
-                    "model": "claude-sonnet-4"
+                    "model": "claude-sonnet-4",
                 }
-            }
+            },
         }
         self.processor = PRProcessor(self.mock_client, self.mock_config)
 
@@ -711,7 +707,7 @@ class TestAIDisableFunctionality(unittest.TestCase):
         """Test that test PRs are skipped when AI is disabled for the repository."""
         test_prs = [
             {"repo": "disabled-repo", "pr_number": 123},
-            {"repo": "enabled-repo", "pr_number": 456}
+            {"repo": "enabled-repo", "pr_number": 456},
         ]
 
         # Mock the AI disable check
@@ -743,7 +739,7 @@ class TestAIDisableFunctionality(unittest.TestCase):
             "number": 123,
             "url": "https://api.github.com/repos/owner/disabled-repo/pulls/123",
             "head": {"repo": {"name": "disabled-repo"}},
-            "issue_url": "https://api.github.com/repos/owner/disabled-repo/issues/123"
+            "issue_url": "https://api.github.com/repos/owner/disabled-repo/issues/123",
         }
 
         # Mock the AI disable check to return True
@@ -761,13 +757,17 @@ class TestAIDisableFunctionality(unittest.TestCase):
         self.processor.process_prs([pr_with_diffs], False)
 
         # Should check if AI is disabled
-        self.mock_client.is_ai_disabled_for_repo.assert_called_once_with("disabled-repo")
+        self.mock_client.is_ai_disabled_for_repo.assert_called_once_with(
+            "disabled-repo"
+        )
 
         # Should skip AI analysis and go straight to unlock process
         self.mock_client.multi_comments_pull_req.assert_called_once_with(
-            [pr_with_diffs], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE)
+            [pr_with_diffs], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE
+        )
         self.mock_client.set_label_to_pull_request.assert_called_once_with(
-            [pr_with_diffs], LABEL_AUTOMERGE_IGNORE)
+            [pr_with_diffs], LABEL_AUTOMERGE_IGNORE
+        )
 
     def test_process_prs_with_ai_enabled(self):
         """Test that PRs are processed normally when AI is enabled for the repository."""
@@ -775,7 +775,7 @@ class TestAIDisableFunctionality(unittest.TestCase):
             "number": 123,
             "url": "https://api.github.com/repos/owner/enabled-repo/pulls/123",
             "head": {"repo": {"name": "enabled-repo"}},
-            "issue_url": "https://api.github.com/repos/owner/enabled-repo/issues/123"
+            "issue_url": "https://api.github.com/repos/owner/enabled-repo/issues/123",
         }
 
         # Mock the AI disable check to return False
@@ -791,7 +791,12 @@ class TestAIDisableFunctionality(unittest.TestCase):
 
         # Mock AI calculator methods
         mock_ai_calculator = Mock()
-        mock_ai_calculator.calculate_confidence_score.return_value = (80, "Safe update", True, {})
+        mock_ai_calculator.calculate_confidence_score.return_value = (
+            80,
+            "Safe update",
+            True,
+            {},
+        )
         mock_ai_calculator.should_auto_merge.return_value = False
         self.processor.ai_calculator = mock_ai_calculator
 

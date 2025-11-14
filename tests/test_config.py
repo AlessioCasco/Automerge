@@ -20,7 +20,7 @@ class TestReadConfig(unittest.TestCase):
             "owner": "test_owner",
             "github_user": "test_user",
             "repos": ["repo1", "repo2"],
-            "filters": ["^\\[DEPENDENCIES\\]", "^\\[Dependabot\\]"]
+            "filters": ["^\\[DEPENDENCIES\\]", "^\\[Dependabot\\]"],
         }
 
     def test_read_config_success(self):
@@ -95,7 +95,7 @@ class TestUseConfig(unittest.TestCase):
             "list_key": ["item1", "item2"],
             "dict_key": {"nested": "value"},
             "int_key": 42,
-            "bool_key": True
+            "bool_key": True,
         }
 
     def test_use_config_string_value(self):
@@ -137,7 +137,8 @@ class TestUseConfig(unittest.TestCase):
             use_config(self.config, "missing_key")
 
         mock_logger.assert_called_once_with(
-            'Error reading key "missing_key" from config')
+            'Error reading key "missing_key" from config'
+        )
 
 
 class TestValidateConfig(unittest.TestCase):
@@ -149,7 +150,7 @@ class TestValidateConfig(unittest.TestCase):
             "owner": "test_owner",
             "github_user": "test_user",
             "repos": ["repo1", "repo2"],
-            "filters": ["^\\[DEPENDENCIES\\]", "^\\[Dependabot\\]"]
+            "filters": ["^\\[DEPENDENCIES\\]", "^\\[Dependabot\\]"],
         }
 
     def test_validate_config_success(self):
@@ -166,7 +167,8 @@ class TestValidateConfig(unittest.TestCase):
             validate_config(config)
 
         self.assertIn(
-            "Missing required configuration key: access_token", str(context.exception))
+            "Missing required configuration key: access_token", str(context.exception)
+        )
 
     def test_validate_config_missing_owner(self):
         """Test validation with missing owner."""
@@ -176,8 +178,9 @@ class TestValidateConfig(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             validate_config(config)
 
-        self.assertIn("Missing required configuration key: owner",
-                      str(context.exception))
+        self.assertIn(
+            "Missing required configuration key: owner", str(context.exception)
+        )
 
     def test_validate_config_missing_github_user(self):
         """Test validation with missing github_user."""
@@ -188,7 +191,8 @@ class TestValidateConfig(unittest.TestCase):
             validate_config(config)
 
         self.assertIn(
-            "Missing required configuration key: github_user", str(context.exception))
+            "Missing required configuration key: github_user", str(context.exception)
+        )
 
     def test_validate_config_missing_repos(self):
         """Test validation with missing repos."""
@@ -198,8 +202,9 @@ class TestValidateConfig(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             validate_config(config)
 
-        self.assertIn("Missing required configuration key: repos",
-                      str(context.exception))
+        self.assertIn(
+            "Missing required configuration key: repos", str(context.exception)
+        )
 
     def test_validate_config_missing_filters(self):
         """Test validation with missing filters."""
@@ -209,8 +214,9 @@ class TestValidateConfig(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             validate_config(config)
 
-        self.assertIn("Missing required configuration key: filters",
-                      str(context.exception))
+        self.assertIn(
+            "Missing required configuration key: filters", str(context.exception)
+        )
 
     def test_validate_config_empty_access_token(self):
         """Test validation with empty access_token."""
@@ -269,8 +275,7 @@ class TestValidateConfig(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             validate_config(config)
 
-        self.assertIn("filters must be a non-empty list",
-                      str(context.exception))
+        self.assertIn("filters must be a non-empty list", str(context.exception))
 
     def test_validate_config_filters_not_list(self):
         """Test validation with filters not being a list."""
@@ -280,8 +285,7 @@ class TestValidateConfig(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             validate_config(config)
 
-        self.assertIn("filters must be a non-empty list",
-                      str(context.exception))
+        self.assertIn("filters must be a non-empty list", str(context.exception))
 
     def test_validate_config_repo_not_string(self):
         """Test validation with non-string repo."""
@@ -292,7 +296,9 @@ class TestValidateConfig(unittest.TestCase):
             validate_config(config)
 
         self.assertIn(
-            "Repository at index 1 must be a non-empty string, found: int", str(context.exception))
+            "Repository at index 1 must be a non-empty string, found: int",
+            str(context.exception),
+        )
 
     def test_validate_config_empty_string_repo(self):
         """Test validation with empty string repo."""
@@ -303,7 +309,8 @@ class TestValidateConfig(unittest.TestCase):
             validate_config(config)
 
         self.assertIn(
-            "Repository at index 1 must be a non-empty string", str(context.exception))
+            "Repository at index 1 must be a non-empty string", str(context.exception)
+        )
 
     def test_validate_config_whitespace_only_repo(self):
         """Test validation with whitespace-only repo."""
@@ -314,7 +321,8 @@ class TestValidateConfig(unittest.TestCase):
             validate_config(config)
 
         self.assertIn(
-            "Repository at index 1 must be a non-empty string", str(context.exception))
+            "Repository at index 1 must be a non-empty string", str(context.exception)
+        )
 
     def test_validate_config_filter_not_string(self):
         """Test validation with non-string filter."""
@@ -325,7 +333,9 @@ class TestValidateConfig(unittest.TestCase):
             validate_config(config)
 
         self.assertIn(
-            "Filter at index 1 must be a non-empty string, found: int", str(context.exception))
+            "Filter at index 1 must be a non-empty string, found: int",
+            str(context.exception),
+        )
 
     def test_validate_config_empty_string_filter(self):
         """Test validation with empty string filter."""
@@ -335,8 +345,9 @@ class TestValidateConfig(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             validate_config(config)
 
-        self.assertIn("Filter at index 1 must be a non-empty string",
-                      str(context.exception))
+        self.assertIn(
+            "Filter at index 1 must be a non-empty string", str(context.exception)
+        )
 
     def test_validate_config_whitespace_only_filter(self):
         """Test validation with whitespace-only filter."""
@@ -346,8 +357,9 @@ class TestValidateConfig(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             validate_config(config)
 
-        self.assertIn("Filter at index 1 must be a non-empty string",
-                      str(context.exception))
+        self.assertIn(
+            "Filter at index 1 must be a non-empty string", str(context.exception)
+        )
 
     def test_validate_config_additional_keys_allowed(self):
         """Test that additional keys in config are allowed."""
@@ -368,7 +380,7 @@ class TestLoadAndValidateConfig(unittest.TestCase):
             "owner": "test_owner",
             "github_user": "test_user",
             "repos": ["repo1", "repo2"],
-            "filters": ["^\\[DEPENDENCIES\\]", "^\\[Dependabot\\]"]
+            "filters": ["^\\[DEPENDENCIES\\]", "^\\[Dependabot\\]"],
         }
 
     def test_load_and_validate_config_success(self):
@@ -425,7 +437,9 @@ class TestLoadAndValidateConfig(unittest.TestCase):
 
     @patch("config.read_config")
     @patch("config.validate_config")
-    def test_load_and_validate_config_calls_both_functions(self, mock_validate, mock_read):
+    def test_load_and_validate_config_calls_both_functions(
+        self, mock_validate, mock_read
+    ):
         """Test that both read_config and validate_config are called."""
         mock_read.return_value = self.valid_config
         mock_validate.return_value = None
@@ -447,18 +461,24 @@ class TestLoadAndValidateConfig(unittest.TestCase):
         config["minimum_confidence_score"] = "80"
         with self.assertRaises(ValueError) as context:
             validate_config(config)
-        self.assertIn("minimum_confidence_score must be a number", str(context.exception))
+        self.assertIn(
+            "minimum_confidence_score must be a number", str(context.exception)
+        )
 
         # Test invalid minimum_confidence_score (out of range)
         config["minimum_confidence_score"] = 150
         with self.assertRaises(ValueError) as context:
             validate_config(config)
-        self.assertIn("minimum_confidence_score must be between 0 and 100", str(context.exception))
+        self.assertIn(
+            "minimum_confidence_score must be between 0 and 100", str(context.exception)
+        )
 
         config["minimum_confidence_score"] = -10
         with self.assertRaises(ValueError) as context:
             validate_config(config)
-        self.assertIn("minimum_confidence_score must be between 0 and 100", str(context.exception))
+        self.assertIn(
+            "minimum_confidence_score must be between 0 and 100", str(context.exception)
+        )
 
     def test_validate_config_auto_merge_environments(self):
         """Test validation of auto_merge_environments configuration."""
@@ -483,13 +503,19 @@ class TestLoadAndValidateConfig(unittest.TestCase):
         config["auto_merge_environments"] = ["development", 123]
         with self.assertRaises(ValueError) as context:
             validate_config(config)
-        self.assertIn("auto_merge_environments[1] must be a non-empty string", str(context.exception))
+        self.assertIn(
+            "auto_merge_environments[1] must be a non-empty string",
+            str(context.exception),
+        )
 
         # Test invalid auto_merge_environments (empty string element)
         config["auto_merge_environments"] = ["development", ""]
         with self.assertRaises(ValueError) as context:
             validate_config(config)
-        self.assertIn("auto_merge_environments[1] must be a non-empty string", str(context.exception))
+        self.assertIn(
+            "auto_merge_environments[1] must be a non-empty string",
+            str(context.exception),
+        )
 
     @patch("config.read_config")
     def test_load_and_validate_config_defaults(self, mock_read):
@@ -516,7 +542,7 @@ class TestLoadAndValidateConfig(unittest.TestCase):
             "http://pushgateway:9091",
             "https://pushgateway.example.com:9091",
             "http://localhost:9091",
-            ""  # Empty string should be allowed
+            "",  # Empty string should be allowed
         ]
 
         for url in valid_urls:
@@ -530,7 +556,7 @@ class TestLoadAndValidateConfig(unittest.TestCase):
             "ftp://pushgateway:9091",  # Wrong protocol
             "pushgateway:9091",  # Missing protocol
             "http://",  # Incomplete URL
-            123  # Wrong type
+            123,  # Wrong type
         ]
 
         for url in invalid_urls:
@@ -564,7 +590,9 @@ class TestLoadAndValidateConfig(unittest.TestCase):
             result = load_and_validate_config("test_file.json")
 
             # Check that custom value is preserved
-            self.assertEqual(result["metrics_pushgateway_url"], "http://custom-pushgateway:9091")
+            self.assertEqual(
+                result["metrics_pushgateway_url"], "http://custom-pushgateway:9091"
+            )
 
 
 if __name__ == "__main__":

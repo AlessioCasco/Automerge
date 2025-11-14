@@ -10,8 +10,10 @@ from typing import Dict, Any, Optional, Tuple
 
 try:
     from .metrics import AutomergeMetrics
+    from .embeddings_service import EmbeddingsService
 except ImportError:
     from metrics import AutomergeMetrics
+    from embeddings_service import EmbeddingsService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +34,14 @@ DEFAULT_TIMEOUT = 30
 class AIConfidenceCalculator:
     """Handles AI-powered confidence score calculation for PRs."""
 
-    def __init__(self, github_token: str, github_client=None, ai_config: Dict[str, Any] = None, metrics: AutomergeMetrics = None):
+    def __init__(
+        self,
+        github_token: str,
+        github_client=None,
+        ai_config: Dict[str, Any] = None,
+        metrics: AutomergeMetrics = None,
+        embeddings_service: EmbeddingsService = None,
+    ):
         """Initialize AI confidence calculator.
 
         Args:
@@ -40,11 +49,13 @@ class AIConfidenceCalculator:
             github_client: GitHub client instance for API calls
             ai_config: AI configuration dictionary
             metrics: Metrics collector for token usage tracking
+            embeddings_service: Embeddings service for PR similarity analysis
         """
         self.github_token = github_token
         self.github_client = github_client
         self.ai_config = ai_config or {}
         self.metrics = metrics
+        self.embeddings_service = embeddings_service
         self.headers = {
             "Authorization": f"Bearer {github_token}",
             "Accept": "application/vnd.github+json",
@@ -67,14 +78,16 @@ class AIConfidenceCalculator:
 
         context = f"""PR Title: {title}
 PR Description: {body}
-Repository: {pr_data.get('head', {}).get('repo', {}).get('name', 'N/A')}
-Base Branch: {pr_data.get('base', {}).get('ref', 'N/A')}
-Head Branch: {pr_data.get('head', {}).get('ref', 'N/A')}
-Labels: {', '.join(labels) if labels else 'None'}"""
+Repository: {pr_data.get("head", {}).get("repo", {}).get("name", "N/A")}
+Base Branch: {pr_data.get("base", {}).get("ref", "N/A")}
+Head Branch: {pr_data.get("head", {}).get("ref", "N/A")}
+Labels: {", ".join(labels) if labels else "None"}"""
 
         return context
 
-    def _extract_terraform_plan(self, pr_data: Dict[str, Any], terraform_user: str = "tl-terraform") -> str:
+    def _extract_terraform_plan(
+        self, pr_data: Dict[str, Any], terraform_user: str = "tl-terraform"
+    ) -> str:
         """Extract Terraform plan output using GitHubClient.
 
         Args:
@@ -87,7 +100,9 @@ Labels: {', '.join(labels) if labels else 'None'}"""
         try:
             # Check if github_client is available
             if not self.github_client:
-                logger.error("GitHub client not available for terraform plan extraction")
+                logger.error(
+                    "GitHub client not available for terraform plan extraction"
+                )
                 return ""
 
             # Get the issue URL from PR data
@@ -96,10 +111,14 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 return ""
 
             # Use GitHubClient to extract the plan
-            plan_content = self.github_client.get_last_terraform_plan(issue_url, terraform_user)
+            plan_content = self.github_client.get_last_terraform_plan(
+                issue_url, terraform_user
+            )
 
             if plan_content:
-                logger.debug(f"📋 Successfully extracted Terraform plan ({len(plan_content)} characters)")
+                logger.debug(
+                    f"📋 Successfully extracted Terraform plan ({len(plan_content)} characters)"
+                )
                 return plan_content
             else:
                 logger.debug(f"📋 No Terraform plan found from {terraform_user}")
@@ -109,7 +128,9 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             logger.error(f"Error extracting Terraform plan: {e}")
             return ""
 
-    def _call_ai_provider_with_metadata(self, prompt: str) -> Tuple[Optional[str], Dict[str, Any]]:
+    def _call_ai_provider_with_metadata(
+        self, prompt: str
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
         """Call AI provider (GitHub Copilot or Claude Code) to get AI response with metadata.
 
         Args:
@@ -126,9 +147,16 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             return self._call_claude_code_with_metadata(prompt)
         else:
             logger.error(f"Unknown AI provider: {provider}")
-            return None, {"provider": "unknown", "model": "none", "input_tokens": 0, "output_tokens": 0}
+            return None, {
+                "provider": "unknown",
+                "model": "none",
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
 
-    def _call_github_copilot_with_metadata(self, prompt: str) -> Tuple[Optional[str], Dict[str, Any]]:
+    def _call_github_copilot_with_metadata(
+        self, prompt: str
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
         """Call GitHub Copilot API via proxy to get AI response with metadata.
 
         Args:
@@ -149,18 +177,13 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             payload = {
                 "model": model,
                 "max_tokens": 500,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
+                "messages": [{"role": "user", "content": prompt}],
             }
 
             # Use different headers for the proxy
             proxy_headers = {
                 "Content-Type": "application/json",
-                "Accept": "application/json"
+                "Accept": "application/json",
             }
 
             # Debug logging
@@ -169,10 +192,7 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             logger.debug(f"   Model: {model}")
 
             response = requests.post(
-                url,
-                headers=proxy_headers,
-                json=payload,
-                timeout=DEFAULT_TIMEOUT
+                url, headers=proxy_headers, json=payload, timeout=DEFAULT_TIMEOUT
             )
 
             logger.debug(f"   Response Status: {response.status_code}")
@@ -193,24 +213,45 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                     "provider": "GitHub Copilot",
                     "model": model,
                     "input_tokens": usage.get("input_tokens", 0),
-                    "output_tokens": usage.get("output_tokens", 0)
+                    "output_tokens": usage.get("output_tokens", 0),
                 }
 
                 return content, metadata
             else:
-                logger.error(f"GitHub Copilot API proxy error: {response.status_code} - {response.text}")
+                logger.error(
+                    f"GitHub Copilot API proxy error: {response.status_code} - {response.text}"
+                )
                 logger.debug(f"   Error Response: {response.text}")
-                return None, {"provider": "GitHub Copilot", "model": model, "input_tokens": 0, "output_tokens": 0}
+                return None, {
+                    "provider": "GitHub Copilot",
+                    "model": model,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                }
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error calling GitHub Copilot API proxy: {e}")
-            return None, {"provider": "GitHub Copilot", "model": "unknown", "input_tokens": 0, "output_tokens": 0}
+            return None, {
+                "provider": "GitHub Copilot",
+                "model": "unknown",
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
         except (KeyError, ValueError, json.JSONDecodeError) as e:
             logger.error(f"Error parsing GitHub Copilot API proxy response: {e}")
-            logger.debug(f"   Raw Response: {response.text if 'response' in locals() else 'N/A'}")
-            return None, {"provider": "GitHub Copilot", "model": "unknown", "input_tokens": 0, "output_tokens": 0}
+            logger.debug(
+                f"   Raw Response: {response.text if 'response' in locals() else 'N/A'}"
+            )
+            return None, {
+                "provider": "GitHub Copilot",
+                "model": "unknown",
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
 
-    def _call_claude_code_with_metadata(self, prompt: str) -> Tuple[Optional[str], Dict[str, Any]]:
+    def _call_claude_code_with_metadata(
+        self, prompt: str
+    ) -> Tuple[Optional[str], Dict[str, Any]]:
         """Call Claude Code API to get AI response with metadata.
 
         Args:
@@ -228,7 +269,12 @@ Labels: {', '.join(labels) if labels else 'None'}"""
 
             if not api_key:
                 logger.error("Claude Code API key not provided")
-                return None, {"provider": "Claude Code", "model": model, "input_tokens": 0, "output_tokens": 0}
+                return None, {
+                    "provider": "Claude Code",
+                    "model": model,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                }
 
             # Use Claude Code API endpoint
             url = f"{api_base}/v1/messages"
@@ -236,12 +282,7 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             payload = {
                 "model": model,
                 "max_tokens": 500,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
+                "messages": [{"role": "user", "content": prompt}],
             }
 
             # Use Claude Code headers
@@ -249,11 +290,13 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 "Content-Type": "application/json",
                 "Accept": "application/json",
                 "x-api-key": api_key,
-                "anthropic-version": "2023-06-01"
+                "anthropic-version": "2023-06-01",
             }
 
             # Check if we should disable SSL verification (for local development)
-            disable_ssl_verify = os.environ.get("DISABLE_SSL_VERIFY", "false").lower() == "true"
+            disable_ssl_verify = (
+                os.environ.get("DISABLE_SSL_VERIFY", "false").lower() == "true"
+            )
 
             # Debug logging
             logger.debug("🤖 Claude Code API Call Details:")
@@ -266,7 +309,7 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 headers=claude_headers,
                 json=payload,
                 timeout=DEFAULT_TIMEOUT,
-                verify=not disable_ssl_verify  # Disable SSL verification if environment variable is set
+                verify=not disable_ssl_verify,  # Disable SSL verification if environment variable is set
             )
 
             logger.debug(f"   Response Status: {response.status_code}")
@@ -287,22 +330,41 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                     "provider": "Claude Code",
                     "model": model,
                     "input_tokens": usage.get("input_tokens", 0),
-                    "output_tokens": usage.get("output_tokens", 0)
+                    "output_tokens": usage.get("output_tokens", 0),
                 }
 
                 return content, metadata
             else:
-                logger.error(f"Claude Code API error: {response.status_code} - {response.text}")
+                logger.error(
+                    f"Claude Code API error: {response.status_code} - {response.text}"
+                )
                 logger.debug(f"   Error Response: {response.text}")
-                return None, {"provider": "Claude Code", "model": model, "input_tokens": 0, "output_tokens": 0}
+                return None, {
+                    "provider": "Claude Code",
+                    "model": model,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                }
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error calling Claude Code API: {e}")
-            return None, {"provider": "Claude Code", "model": "unknown", "input_tokens": 0, "output_tokens": 0}
+            return None, {
+                "provider": "Claude Code",
+                "model": "unknown",
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
         except (KeyError, ValueError, json.JSONDecodeError) as e:
             logger.error(f"Error parsing Claude Code API response: {e}")
-            logger.debug(f"   Raw Response: {response.text if 'response' in locals() else 'N/A'}")
-            return None, {"provider": "Claude Code", "model": "unknown", "input_tokens": 0, "output_tokens": 0}
+            logger.debug(
+                f"   Raw Response: {response.text if 'response' in locals() else 'N/A'}"
+            )
+            return None, {
+                "provider": "Claude Code",
+                "model": "unknown",
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
 
     def _parse_ai_response(self, ai_response: str) -> Tuple[int, str]:
         """Parse AI response to extract confidence score and explanation.
@@ -340,7 +402,9 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 # Extract everything after the score as explanation
                 explanation_start = ai_response.find(f"{score}%")
                 if explanation_start != -1:
-                    explanation = ai_response[explanation_start + len(f"{score}%"):].strip()
+                    explanation = ai_response[
+                        explanation_start + len(f"{score}%") :
+                    ].strip()
                     # Remove "EXPLANATION" if present
                     explanation = explanation.replace("EXPLANATION", "").strip()
                     if explanation:
@@ -376,15 +440,16 @@ Labels: {', '.join(labels) if labels else 'None'}"""
         # Define environment patterns mapping
         env_patterns = {
             "development": [
-                r"dev", r"development", r"staging", r"test",
-                r"feature/", r"hotfix/", r"develop"
+                r"dev",
+                r"development",
+                r"staging",
+                r"test",
+                r"feature/",
+                r"hotfix/",
+                r"develop",
             ],
-            "sandbox": [
-                r"sandbox", r"sbx"
-            ],
-            "production": [
-                r"main", r"master", r"prod", r"production", r"release/"
-            ]
+            "sandbox": [r"sandbox", r"sbx"],
+            "production": [r"main", r"master", r"prod", r"production", r"release/"],
         }
 
         # Check if any configured environment matches
@@ -393,15 +458,174 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             if env_lower in env_patterns:
                 patterns = env_patterns[env_lower]
                 for pattern in patterns:
-                    if re.search(pattern, base_branch) or re.search(pattern, head_branch):
-                        logger.debug(f"Environment '{env}' detected for auto-merge (pattern: {pattern})")
+                    if re.search(pattern, base_branch) or re.search(
+                        pattern, head_branch
+                    ):
+                        logger.debug(
+                            f"Environment '{env}' detected for auto-merge (pattern: {pattern})"
+                        )
                         return True
 
         # Default to False (conservative approach)
-        logger.debug(f"No auto-merge environment detected. Configured: {auto_merge_envs}")
+        logger.debug(
+            f"No auto-merge environment detected. Configured: {auto_merge_envs}"
+        )
         return False
 
-    def calculate_confidence_score(self, pr_data: Dict[str, Any]) -> Tuple[int, str, bool, Dict[str, Any]]:
+    def _apply_similarity_boost(
+        self, base_score: int, pr_data: Dict[str, Any]
+    ) -> Tuple[int, Dict[str, Any]]:
+        """Apply similarity boost based on historical safe PRs.
+
+        Args:
+            base_score: Base confidence score from AI/fallback
+            pr_data: Pull request data
+
+        Returns:
+            Tuple of (boosted_score, similarity_metadata)
+        """
+        if not self.embeddings_service or not self.embeddings_service.enabled:
+            return base_score, {}
+
+        try:
+            repo_name = pr_data.get("head", {}).get("repo", {}).get("name", "")
+            pr_number = pr_data.get("number")
+
+            if not repo_name or not pr_number:
+                logger.warning("Missing repo_name or pr_number for embeddings")
+                return base_score, {}
+
+            logger.info(
+                f"🔍 Calculating similarity boost for PR #{pr_number} in {repo_name}"
+            )
+
+            # Fetch historical safe PRs from GitHub
+            if not self.github_client:
+                logger.warning(
+                    "GitHub client not available for fetching historical PRs"
+                )
+                return base_score, {}
+
+            # Get PRs with 'automerge-safe-example' label
+            # Use max_cached_prs from embeddings service configuration
+            max_prs = self.embeddings_service.max_cached_prs
+            safe_prs = self.github_client.get_prs_with_label(
+                repo_name, "automerge-safe-example", limit=max_prs
+            )
+
+            if not safe_prs:
+                logger.info(
+                    "No historical safe PRs found - skipping embeddings calculation for current PR"
+                )
+                return base_score, {
+                    "similarity_enabled": True,
+                    "historical_prs_found": 0,
+                    "embeddings_skipped": True,
+                    "skip_reason": "no_historical_prs",
+                }
+
+            safe_pr_numbers = [pr.get("number") for pr in safe_prs if pr.get("number")]
+
+            if not safe_pr_numbers:
+                logger.info(
+                    "No valid PR numbers found in safe PRs - skipping embeddings calculation"
+                )
+                return base_score, {
+                    "similarity_enabled": True,
+                    "historical_prs_found": len(safe_prs),
+                    "valid_pr_numbers": 0,
+                    "embeddings_skipped": True,
+                    "skip_reason": "no_valid_pr_numbers",
+                }
+
+            logger.info(
+                f"Found {len(safe_pr_numbers)} historical safe PRs: {safe_pr_numbers}"
+            )
+
+            # Get cached embeddings from S3 and calculate missing ones
+            # This also performs S3 cleanup to align with GitHub's list
+            historical_embeddings = self.embeddings_service.get_historical_safe_prs(
+                repo_name, safe_pr_numbers, self.github_client
+            )
+
+            if not historical_embeddings:
+                logger.info(
+                    "No historical embeddings available - skipping embeddings calculation for current PR"
+                )
+                return base_score, {
+                    "similarity_enabled": True,
+                    "historical_prs_found": len(safe_pr_numbers),
+                    "historical_embeddings_loaded": 0,
+                    "embeddings_skipped": True,
+                    "skip_reason": "no_historical_embeddings",
+                }
+
+            logger.info(
+                f"Loaded {len(historical_embeddings)} cached embeddings from S3"
+            )
+
+            # Prepare current PR data for embeddings
+            current_pr_data = {
+                "pr_number": pr_number,
+                "repo_name": repo_name,
+                "files": pr_data.get("files", []),
+                "diff": pr_data.get("diff", ""),
+                "terraform_plan": self._extract_terraform_plan(pr_data),
+            }
+
+            # Calculate embeddings for current PR
+            current_embeddings = self.embeddings_service.calculate_pr_embeddings(
+                current_pr_data
+            )
+
+            if not current_embeddings:
+                logger.warning("Failed to calculate embeddings for current PR")
+                return base_score, {
+                    "similarity_enabled": True,
+                    "embeddings_calculated": False,
+                }
+
+            # Calculate similarity boost
+            if historical_embeddings:
+                max_similarity, most_similar_pr = (
+                    self.embeddings_service.calculate_similarity_boost(
+                        current_embeddings, historical_embeddings
+                    )
+                )
+
+                # Apply boost to score
+                boosted_score = self.embeddings_service.apply_similarity_boost(
+                    float(base_score), max_similarity
+                )
+
+                similarity_metadata = {
+                    "similarity_enabled": True,
+                    "max_similarity": round(max_similarity, 4),
+                    "most_similar_pr": most_similar_pr,
+                    "historical_prs_count": len(historical_embeddings),
+                    "base_score": base_score,
+                    "boosted_score": int(boosted_score),
+                }
+
+                logger.info(
+                    f"✨ Applied similarity boost: {base_score} → {int(boosted_score)} (similarity: {max_similarity:.4f})"
+                )
+
+                return int(boosted_score), similarity_metadata
+            else:
+                logger.info("No cached embeddings available, skipping similarity boost")
+                return base_score, {
+                    "similarity_enabled": True,
+                    "historical_prs_count": 0,
+                }
+
+        except Exception as e:
+            logger.error(f"Error applying similarity boost: {e}", exc_info=True)
+            return base_score, {"similarity_enabled": True, "error": str(e)}
+
+    def calculate_confidence_score(
+        self, pr_data: Dict[str, Any]
+    ) -> Tuple[int, str, bool, Dict[str, Any]]:
         """Calculate confidence score for automatic merging.
 
         Args:
@@ -420,11 +644,17 @@ Labels: {', '.join(labels) if labels else 'None'}"""
 
             logger.debug("🔍 PR Analysis Context:")
             logger.debug(f"   PR Title: {pr_data.get('title', 'N/A')}")
-            logger.debug(f"   Repository: {pr_data.get('head', {}).get('repo', {}).get('name', 'N/A')}")
+            logger.debug(
+                f"   Repository: {pr_data.get('head', {}).get('repo', {}).get('name', 'N/A')}"
+            )
             logger.debug(f"   Base Branch: {pr_data.get('base', {}).get('ref', 'N/A')}")
             logger.debug(f"   Head Branch: {pr_data.get('head', {}).get('ref', 'N/A')}")
-            logger.debug(f"   Environment: {'Auto-merge Allowed' if is_auto_merge_env else 'Auto-merge Disabled'} (for auto-merge only)")
-            logger.debug(f"   Plan Output: {plan_output[:200]}{'...' if len(plan_output) > 200 else ''}")
+            logger.debug(
+                f"   Environment: {'Auto-merge Allowed' if is_auto_merge_env else 'Auto-merge Disabled'} (for auto-merge only)"
+            )
+            logger.debug(
+                f"   Plan Output: {plan_output[:200]}{'...' if len(plan_output) > 200 else ''}"
+            )
 
             # Build prompt for AI - focus only on PR description, changelog, and plan output
             prompt = f"""You are an expert DevOps engineer analyzing pull requests for automatic merging.
@@ -438,7 +668,7 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             Analyze this pull request for automatic merging safety:
             {pr_context}
             Terraform Plan Output:
-            {plan_output if plan_output else 'No plan output available'}
+            {plan_output if plan_output else "No plan output available"}
             Based on the above information, assess the risk level and determine if this PR can be safely merged automatically.
             Consider:
             - Type of changes (provider updates, dependency updates, etc.)
@@ -451,7 +681,9 @@ Labels: {', '.join(labels) if labels else 'None'}"""
 
             logger.debug("📝 Generated Prompt:")
             logger.debug(f"   Prompt Length: {len(prompt)} characters")
-            logger.debug(f"   Prompt Preview: {prompt[:500]}{'...' if len(prompt) > 500 else ''}")
+            logger.debug(
+                f"   Prompt Preview: {prompt[:500]}{'...' if len(prompt) > 500 else ''}"
+            )
 
             # Call AI and get metadata
             ai_response, metadata = self._call_ai_provider_with_metadata(prompt)
@@ -465,11 +697,25 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 logger.debug(f"   Confidence Score: {score}%")
                 logger.debug(f"   Explanation: {explanation}")
 
+                # Apply similarity boost
+                boosted_score, similarity_metadata = self._apply_similarity_boost(
+                    score, pr_data
+                )
+                if similarity_metadata:
+                    metadata.update({"similarity": similarity_metadata})
+                    if boosted_score != score:
+                        explanation += f" [Similarity boost applied: {score}% → {boosted_score}%, similar to PR #{similarity_metadata.get('most_similar_pr')}]"
+                score = boosted_score
+
                 # Record token usage metrics
                 if self.metrics and metadata:
-                    repo_name = pr_data.get("head", {}).get("repo", {}).get("name", "unknown")
+                    repo_name = (
+                        pr_data.get("head", {}).get("repo", {}).get("name", "unknown")
+                    )
                     model_name = metadata.get("model", "unknown")
-                    engine_name = metadata.get("provider", "unknown").lower().replace(" ", "-")
+                    engine_name = (
+                        metadata.get("provider", "unknown").lower().replace(" ", "-")
+                    )
                     input_tokens = metadata.get("input_tokens", 0)
                     output_tokens = metadata.get("output_tokens", 0)
 
@@ -478,11 +724,13 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                         model=model_name,
                         engine=engine_name,
                         input_tokens=input_tokens,
-                        output_tokens=output_tokens
+                        output_tokens=output_tokens,
                     )
 
-                    logger.debug(f"📈 Recorded metrics - Repo: {repo_name}, Model: {model_name}, Engine: {engine_name}, "
-                               f"Input: {input_tokens}, Output: {output_tokens}")
+                    logger.debug(
+                        f"📈 Recorded metrics - Repo: {repo_name}, Model: {model_name}, Engine: {engine_name}, "
+                        f"Input: {input_tokens}, Output: {output_tokens}"
+                    )
 
                 return score, explanation, is_auto_merge_env, metadata
             else:
@@ -490,15 +738,35 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 logger.warning("AI service unavailable, using fallback logic")
                 logger.debug("🔄 Using Fallback Logic")
 
-                fallback_score, fallback_explanation, fallback_is_auto_merge = self._fallback_confidence_calculation(pr_data, plan_output, is_auto_merge_env)
+                fallback_score, fallback_explanation, fallback_is_auto_merge = (
+                    self._fallback_confidence_calculation(
+                        pr_data, plan_output, is_auto_merge_env
+                    )
+                )
+
+                # Apply similarity boost to fallback score too
+                boosted_fallback_score, similarity_metadata = (
+                    self._apply_similarity_boost(fallback_score, pr_data)
+                )
+                if similarity_metadata and boosted_fallback_score != fallback_score:
+                    fallback_explanation += f" [Similarity boost applied: {fallback_score}% → {boosted_fallback_score}%, similar to PR #{similarity_metadata.get('most_similar_pr')}]"
+                fallback_score = boosted_fallback_score
+
                 fallback_metadata = {
                     "provider": "fallback",
                     "model": "none",
                     "input_tokens": 0,
-                    "output_tokens": 0
+                    "output_tokens": 0,
                 }
+                if similarity_metadata:
+                    fallback_metadata.update({"similarity": similarity_metadata})
 
-                return fallback_score, fallback_explanation, fallback_is_auto_merge, fallback_metadata
+                return (
+                    fallback_score,
+                    fallback_explanation,
+                    fallback_is_auto_merge,
+                    fallback_metadata,
+                )
 
         except Exception as e:
             logger.error(f"Error calculating confidence score: {e}")
@@ -507,11 +775,18 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 "provider": "error",
                 "model": "none",
                 "input_tokens": 0,
-                "output_tokens": 0
+                "output_tokens": 0,
             }
-            return 0, f"Error calculating confidence score: {str(e)}", False, error_metadata
+            return (
+                0,
+                f"Error calculating confidence score: {str(e)}",
+                False,
+                error_metadata,
+            )
 
-    def _fallback_confidence_calculation(self, pr_data: Dict[str, Any], plan_output: str, is_auto_merge_env: bool) -> Tuple[int, str, bool]:
+    def _fallback_confidence_calculation(
+        self, pr_data: Dict[str, Any], plan_output: str, is_auto_merge_env: bool
+    ) -> Tuple[int, str, bool]:
         """Fallback confidence calculation when AI is unavailable.
 
         Args:
@@ -531,7 +806,10 @@ Labels: {', '.join(labels) if labels else 'None'}"""
         body = pr_data.get("body", "").lower()
 
         # Check for dependency updates (usually safe)
-        if any(keyword in title for keyword in ["dependencies", "dependency", "update", "bump"]):
+        if any(
+            keyword in title
+            for keyword in ["dependencies", "dependency", "update", "bump"]
+        ):
             score += 20
             explanation_parts.append("Dependency update detected")
 
@@ -541,7 +819,10 @@ Labels: {', '.join(labels) if labels else 'None'}"""
             explanation_parts.append("Provider update detected")
 
         # Check for breaking changes in description
-        if any(keyword in body for keyword in ["breaking", "breaking change", "deprecated", "removed"]):
+        if any(
+            keyword in body
+            for keyword in ["breaking", "breaking change", "deprecated", "removed"]
+        ):
             score -= 30
             explanation_parts.append("Breaking changes detected")
 
@@ -553,7 +834,11 @@ Labels: {', '.join(labels) if labels else 'None'}"""
                 explanation_parts.append("No infrastructure changes")
 
             # Check for destructive changes
-            if "destroy" in plan_output.lower() or "update" in plan_output.lower() or "replace" in plan_output.lower():
+            if (
+                "destroy" in plan_output.lower()
+                or "update" in plan_output.lower()
+                or "replace" in plan_output.lower()
+            ):
                 score -= 40
                 explanation_parts.append("Destructive changes detected")
 
@@ -573,7 +858,9 @@ Labels: {', '.join(labels) if labels else 'None'}"""
 
         return score, explanation, is_auto_merge_env
 
-    def should_auto_merge(self, confidence_score: int, is_auto_merge_env: bool, enable_auto_merge: bool) -> bool:
+    def should_auto_merge(
+        self, confidence_score: int, is_auto_merge_env: bool, enable_auto_merge: bool
+    ) -> bool:
         """Determine if PR should be auto-merged.
 
         Args:
@@ -591,4 +878,8 @@ Labels: {', '.join(labels) if labels else 'None'}"""
         # 1. Auto-merge is enabled in config
         # 2. Confidence score meets or exceeds minimum threshold
         # 3. Environment allows auto-merge
-        return enable_auto_merge and confidence_score >= minimum_score and is_auto_merge_env
+        return (
+            enable_auto_merge
+            and confidence_score >= minimum_score
+            and is_auto_merge_env
+        )

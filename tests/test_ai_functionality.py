@@ -28,7 +28,7 @@ class TestAIFunctionality(unittest.TestCase):
             "head": {"repo": {"name": "terraform-ops"}},
             "base": {"ref": "master"},
             "labels": [{"name": "dependencies"}],
-            "issue_url": "https://api.github.com/repos/test/repo/issues/123"
+            "issue_url": "https://api.github.com/repos/test/repo/issues/123",
         }
 
         self.github_config = {
@@ -40,14 +40,14 @@ class TestAIFunctionality(unittest.TestCase):
             "ai_config": {
                 "github": {
                     "api_base": "http://localhost:4141",
-                    "model": "claude-sonnet-4"
+                    "model": "claude-sonnet-4",
                 },
                 "claude-code": {
                     "api_base": "https://api.anthropic.com",
                     "api_key": "test_key",
-                    "model": "claude-sonnet-4"
-                }
-            }
+                    "model": "claude-sonnet-4",
+                },
+            },
         }
 
         self.claude_config = {
@@ -59,14 +59,14 @@ class TestAIFunctionality(unittest.TestCase):
             "ai_config": {
                 "github": {
                     "api_base": "http://localhost:4141",
-                    "model": "claude-sonnet-4"
+                    "model": "claude-sonnet-4",
                 },
                 "claude-code": {
                     "api_base": "https://api.anthropic.com",
                     "api_key": "test_key",
-                    "model": "claude-sonnet-4"
-                }
-            }
+                    "model": "claude-sonnet-4",
+                },
+            },
         }
 
     def test_ai_calculator_initialization(self):
@@ -88,12 +88,14 @@ class TestAIFunctionality(unittest.TestCase):
         mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {
             "content": [{"text": "SCORE: 85% - EXPLANATION\nThis is a safe update"}],
-            "usage": {"input_tokens": 100, "output_tokens": 50}
+            "usage": {"input_tokens": 100, "output_tokens": 50},
         }
         mock_post.return_value = mock_response
 
         calculator = AIConfidenceCalculator("test_token", None, self.github_config)
-        response, metadata = calculator._call_github_copilot_with_metadata("test prompt")
+        response, metadata = calculator._call_github_copilot_with_metadata(
+            "test prompt"
+        )
 
         self.assertIsNotNone(response)
         self.assertEqual(metadata["provider"], "GitHub Copilot")
@@ -109,8 +111,10 @@ class TestAIFunctionality(unittest.TestCase):
         mock_response.status_code = 200
         mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {
-            "content": [{"text": "SCORE: 90% - EXPLANATION\nThis is a very safe update"}],
-            "usage": {"input_tokens": 150, "output_tokens": 75}
+            "content": [
+                {"text": "SCORE: 90% - EXPLANATION\nThis is a very safe update"}
+            ],
+            "usage": {"input_tokens": 150, "output_tokens": 75},
         }
         mock_post.return_value = mock_response
 
@@ -170,16 +174,22 @@ class TestAIFunctionality(unittest.TestCase):
         mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {
             "content": [{"text": "SCORE: 85% - EXPLANATION\nThis is a safe update"}],
-            "usage": {"input_tokens": 100, "output_tokens": 50}
+            "usage": {"input_tokens": 100, "output_tokens": 50},
         }
         mock_post.return_value = mock_response
 
         # Mock GitHub client for terraform plan extraction
         mock_github_client = Mock()
-        mock_github_client.get_last_terraform_plan.return_value = "No changes. Your infrastructure matches the configuration"
+        mock_github_client.get_last_terraform_plan.return_value = (
+            "No changes. Your infrastructure matches the configuration"
+        )
 
-        calculator = AIConfidenceCalculator("test_token", mock_github_client, self.github_config)
-        score, explanation, is_dev, metadata = calculator.calculate_confidence_score(self.sample_pr_data)
+        calculator = AIConfidenceCalculator(
+            "test_token", mock_github_client, self.github_config
+        )
+        score, explanation, is_dev, metadata = calculator.calculate_confidence_score(
+            self.sample_pr_data
+        )
 
         self.assertEqual(score, 85)
         self.assertIsInstance(explanation, str)
@@ -211,16 +221,24 @@ class TestAIFunctionality(unittest.TestCase):
         calculator = AIConfidenceCalculator("test_token", None, self.github_config)
 
         # Test auto-merge conditions
-        should_merge = calculator.should_auto_merge(100, True, True)  # 100% confidence, auto-merge env, enabled
+        should_merge = calculator.should_auto_merge(
+            100, True, True
+        )  # 100% confidence, auto-merge env, enabled
         self.assertTrue(should_merge)
 
-        should_merge = calculator.should_auto_merge(85, True, True)  # 85% confidence, auto-merge env, enabled
+        should_merge = calculator.should_auto_merge(
+            85, True, True
+        )  # 85% confidence, auto-merge env, enabled
         self.assertFalse(should_merge)  # Below default 100% threshold
 
-        should_merge = calculator.should_auto_merge(100, False, True)  # 100% confidence, no auto-merge env, enabled
+        should_merge = calculator.should_auto_merge(
+            100, False, True
+        )  # 100% confidence, no auto-merge env, enabled
         self.assertFalse(should_merge)
 
-        should_merge = calculator.should_auto_merge(100, True, False)  # 100% confidence, auto-merge env, disabled
+        should_merge = calculator.should_auto_merge(
+            100, True, False
+        )  # 100% confidence, auto-merge env, disabled
         self.assertFalse(should_merge)
 
     def test_configurable_auto_merge_threshold(self):
@@ -232,10 +250,14 @@ class TestAIFunctionality(unittest.TestCase):
         calculator = AIConfidenceCalculator("test_token", None, custom_config)
 
         # Test with 80% threshold
-        should_merge = calculator.should_auto_merge(85, True, True)  # 85% confidence, auto-merge env, enabled
+        should_merge = calculator.should_auto_merge(
+            85, True, True
+        )  # 85% confidence, auto-merge env, enabled
         self.assertTrue(should_merge)  # Should pass with 80% threshold
 
-        should_merge = calculator.should_auto_merge(75, True, True)  # 75% confidence, auto-merge env, enabled
+        should_merge = calculator.should_auto_merge(
+            75, True, True
+        )  # 75% confidence, auto-merge env, enabled
         self.assertFalse(should_merge)  # Should fail below 80% threshold
 
     def test_configurable_auto_merge_environments(self):
@@ -247,26 +269,20 @@ class TestAIFunctionality(unittest.TestCase):
         calculator = AIConfidenceCalculator("test_token", None, custom_config)
 
         # Test development environment detection
-        pr_data_dev = {
-            "base": {"ref": "develop"},
-            "head": {"ref": "feature/test"}
-        }
+        pr_data_dev = {"base": {"ref": "develop"}, "head": {"ref": "feature/test"}}
         is_auto_merge_env = calculator._is_auto_merge_environment(pr_data_dev)
         self.assertTrue(is_auto_merge_env)
 
         # Test sandbox environment detection
         pr_data_sandbox = {
             "base": {"ref": "sandbox"},
-            "head": {"ref": "experiment/test"}
+            "head": {"ref": "experiment/test"},
         }
         is_auto_merge_env = calculator._is_auto_merge_environment(pr_data_sandbox)
         self.assertTrue(is_auto_merge_env)
 
         # Test production environment (should not be auto-merge)
-        pr_data_prod = {
-            "base": {"ref": "main"},
-            "head": {"ref": "release/v1.0"}
-        }
+        pr_data_prod = {"base": {"ref": "main"}, "head": {"ref": "release/v1.0"}}
         is_auto_merge_env = calculator._is_auto_merge_environment(pr_data_prod)
         self.assertFalse(is_auto_merge_env)
 
@@ -281,7 +297,9 @@ class TestAIFunctionality(unittest.TestCase):
         mock_post.return_value = mock_response
 
         calculator = AIConfidenceCalculator("test_token", None, self.github_config)
-        response, metadata = calculator._call_github_copilot_with_metadata("test prompt")
+        response, metadata = calculator._call_github_copilot_with_metadata(
+            "test prompt"
+        )
 
         self.assertIsNone(response)
         self.assertEqual(metadata["provider"], "GitHub Copilot")
@@ -309,7 +327,7 @@ class TestAIFunctionality(unittest.TestCase):
         mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {
             "content": [{"text": "SCORE: 85% - EXPLANATION\nTest"}],
-            "usage": {"input_tokens": 100, "output_tokens": 50}
+            "usage": {"input_tokens": 100, "output_tokens": 50},
         }
         mock_post.return_value = mock_response
 
@@ -318,7 +336,9 @@ class TestAIFunctionality(unittest.TestCase):
 
         try:
             calculator = AIConfidenceCalculator("test_token", None, self.claude_config)
-            response, metadata = calculator._call_claude_code_with_metadata("test prompt")
+            response, metadata = calculator._call_claude_code_with_metadata(
+                "test prompt"
+            )
 
             # Verify that verify=False was passed to requests.post
             mock_post.assert_called_once()
@@ -369,9 +389,9 @@ class TestPRProcessorAI(unittest.TestCase):
             "ai_config": {
                 "github": {
                     "api_base": "http://localhost:4141",
-                    "model": "claude-sonnet-4"
+                    "model": "claude-sonnet-4",
                 }
-            }
+            },
         }
 
         self.github_client = Mock(spec=GitHubClient)
@@ -386,13 +406,15 @@ class TestPRProcessorAI(unittest.TestCase):
         mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {
             "content": [{"text": "SCORE: 85% - EXPLANATION\nThis is a safe update"}],
-            "usage": {"input_tokens": 100, "output_tokens": 50}
+            "usage": {"input_tokens": 100, "output_tokens": 50},
         }
         mock_post.return_value = mock_response
 
         # Mock GitHub client methods
         self.github_client.comment_pull_req = Mock()
-        self.github_client.get_last_terraform_plan = Mock(return_value="No changes. Your infrastructure matches the configuration")
+        self.github_client.get_last_terraform_plan = Mock(
+            return_value="No changes. Your infrastructure matches the configuration"
+        )
 
         pr_data = {
             "title": "[DEPENDENCIES] Update provider",
@@ -401,7 +423,7 @@ class TestPRProcessorAI(unittest.TestCase):
             "base": {"ref": "develop"},
             "labels": [],
             "number": 123,
-            "issue_url": "https://api.github.com/repos/test/repo/issues/123"
+            "issue_url": "https://api.github.com/repos/test/repo/issues/123",
         }
 
         self.pr_processor._add_confidence_score_comment(pr_data)
@@ -423,7 +445,7 @@ class TestPRProcessorAI(unittest.TestCase):
         mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {
             "content": [{"text": "SCORE: 85% - EXPLANATION\nThis is a safe update"}],
-            "usage": {"input_tokens": 100, "output_tokens": 50}
+            "usage": {"input_tokens": 100, "output_tokens": 50},
         }
 
         # Create config with comments disabled
@@ -435,7 +457,9 @@ class TestPRProcessorAI(unittest.TestCase):
 
             # Mock GitHub client methods
             self.github_client.comment_pull_req = Mock()
-            self.github_client.get_last_terraform_plan = Mock(return_value="No changes. Your infrastructure matches the configuration")
+            self.github_client.get_last_terraform_plan = Mock(
+                return_value="No changes. Your infrastructure matches the configuration"
+            )
 
             pr_data = {
                 "title": "[DEPENDENCIES] Update provider",
@@ -444,7 +468,7 @@ class TestPRProcessorAI(unittest.TestCase):
                 "base": {"ref": "develop"},
                 "labels": [],
                 "number": 123,
-                "issue_url": "https://api.github.com/repos/test/repo/issues/123"
+                "issue_url": "https://api.github.com/repos/test/repo/issues/123",
             }
 
             # Create processor with disabled comments
@@ -471,7 +495,7 @@ class TestPRProcessorAI(unittest.TestCase):
             "base": {"ref": "develop"},
             "labels": [],
             "number": 123,
-            "issue_url": "https://api.github.com/repos/test/repo/issues/123"
+            "issue_url": "https://api.github.com/repos/test/repo/issues/123",
         }
 
         # Test AI failure comment
@@ -479,7 +503,7 @@ class TestPRProcessorAI(unittest.TestCase):
             pr_data,
             "No Terraform plan found",
             "Atlantis has not yet generated a plan for this PR.",
-            "Wait for Atlantis to complete the plan."
+            "Wait for Atlantis to complete the plan.",
         )
 
         # Verify comment was posted
@@ -498,16 +522,22 @@ class TestPRProcessorAI(unittest.TestCase):
         mock_response.headers = {"Content-Type": "application/json"}
         mock_response.json.return_value = {
             "content": [{"text": "SCORE: 100% - EXPLANATION\nThis is a safe update"}],
-            "usage": {"input_tokens": 100, "output_tokens": 50}
+            "usage": {"input_tokens": 100, "output_tokens": 50},
         }
 
         # Mock GitHub client methods
-        self.github_client.get_last_comment = Mock(return_value={"body": "Changes to Outputs"})
-        self.github_client.get_last_terraform_plan = Mock(return_value="Plan: 0 to add, 1 to change, 0 to destroy")
+        self.github_client.get_last_comment = Mock(
+            return_value={"body": "Changes to Outputs"}
+        )
+        self.github_client.get_last_terraform_plan = Mock(
+            return_value="Plan: 0 to add, 1 to change, 0 to destroy"
+        )
         self.github_client.merge_pull_req = Mock()
         self.github_client.multi_comments_pull_req = Mock()
         self.github_client.is_approved = Mock(return_value=None)
-        self.github_client.is_ai_disabled_for_repo = Mock(return_value=False)  # AI enabled for this test
+        self.github_client.is_ai_disabled_for_repo = Mock(
+            return_value=False
+        )  # AI enabled for this test
 
         pr_data = {
             "title": "[DEPENDENCIES] Update provider",
@@ -517,7 +547,7 @@ class TestPRProcessorAI(unittest.TestCase):
             "labels": [],
             "number": 123,
             "url": "https://api.github.com/repos/test/repo/pulls/123",
-            "issue_url": "https://api.github.com/repos/test/repo/issues/123"
+            "issue_url": "https://api.github.com/repos/test/repo/issues/123",
         }
 
         with patch("ai_confidence.requests.post") as mock_post:
