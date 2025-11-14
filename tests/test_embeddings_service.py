@@ -2,8 +2,7 @@ import unittest
 import json
 import os
 import sys
-from unittest.mock import Mock, patch, MagicMock
-from dataclasses import asdict
+from unittest.mock import Mock, patch
 
 # Add src directory to path so we can import the modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))

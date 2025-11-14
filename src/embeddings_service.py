@@ -27,14 +27,12 @@ try:
         DEFAULT_EMBEDDINGS_MAX_CACHED_PRS,
         DEFAULT_EMBEDDINGS_SIMILARITY_BOOST_WEIGHT,
         DEFAULT_EMBEDDINGS_AWS_REGION,
-        GITHUB_MAX_PER_PAGE,
     )
 except ImportError:
     from utils import (
         DEFAULT_EMBEDDINGS_MAX_CACHED_PRS,
         DEFAULT_EMBEDDINGS_SIMILARITY_BOOST_WEIGHT,
         DEFAULT_EMBEDDINGS_AWS_REGION,
-        GITHUB_MAX_PER_PAGE,
     )
 
 logger = logging.getLogger(__name__)
