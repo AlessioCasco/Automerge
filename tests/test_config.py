@@ -396,6 +396,14 @@ class TestLoadAndValidateConfig(unittest.TestCase):
             expected_config["minimum_confidence_score"] = 100
             expected_config["auto_merge_environments"] = ["development"]
             expected_config["metrics_pushgateway_url"] = None
+            expected_config["embeddings"] = {
+                "enabled": False,
+                "s3_bucket": "",
+                "aws_region": "eu-west-1",
+                "similarity_boost_weight": 0.5,
+                "max_cached_prs": 100,
+                "force_recalculate": False,
+            }
             self.assertEqual(result, expected_config)
         finally:
             os.unlink(temp_path)
