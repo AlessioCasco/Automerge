@@ -214,6 +214,8 @@ Labels: {", ".join(labels) if labels else "None"}"""
                     "model": model,
                     "input_tokens": usage.get("input_tokens", 0),
                     "output_tokens": usage.get("output_tokens", 0),
+                    "environment": None,  # Will be set by calculate_confidence_score
+                    "environment_reason": None,  # Will be set by calculate_confidence_score
                 }
 
                 return content, metadata
@@ -421,6 +423,81 @@ Labels: {", ".join(labels) if labels else "None"}"""
             logger.error(f"Error parsing AI response: {e}")
             return 50, "Error parsing AI response"
 
+    def _detect_environment(self, pr_data: Dict[str, Any]) -> Tuple[str, str]:
+        """Detect the environment based on PR title and changed files.
+
+        Uses dual heuristics:
+        1. Check PR title for environment keywords (as whole words)
+        2. Check changed file paths/names for account-specific patterns
+
+        Args:
+            pr_data: Pull request data
+
+        Returns:
+            Tuple of (environment_name, detection_reason)
+            - environment_name: "development", "sandbox", "production", or "global"
+            - detection_reason: explanation of why this environment was detected
+        """
+        title = pr_data.get("title", "").lower()
+
+        # Get changed files from PR data
+        changed_files = []
+        if "files" in pr_data:
+            changed_files = [f.get("filename", "").lower() for f in pr_data.get("files", [])]
+
+        # Define environment keywords with word boundaries
+        env_keywords = {
+            "development": {
+                "title_keywords": [r"\bdevelopment\b", r"\bdevelop\b", r"\bdev\b"],
+                "file_patterns": [r"account[_.-]development", r"account[_.-]dev\b"],
+            },
+            "sandbox": {
+                "title_keywords": [r"\bsandbox\b", r"\bsbx\b"],
+                "file_patterns": [r"account[_.-]sandbox", r"account[_.-]sbx\b"],
+            },
+            "production": {
+                "title_keywords": [r"\bproduction\b", r"\bprod\b", r"\bprd\b"],
+                "file_patterns": [r"account[_.-]production", r"account[_.-]prod\b", r"account[_.-]prd\b"],
+            },
+        }
+
+        detected_envs = {}
+
+        # Check title for environment keywords
+        for env_name, patterns in env_keywords.items():
+            for pattern in patterns["title_keywords"]:
+                if re.search(pattern, title):
+                    if env_name not in detected_envs:
+                        detected_envs[env_name] = []
+                    # Extract pattern name without regex boundaries for display
+                    pattern_display = pattern.replace(r"\b", "")
+                    detected_envs[env_name].append(f"title contains '{pattern_display}'")
+                    break
+
+        # Check file paths for environment patterns
+        for file_path in changed_files:
+            for env_name, patterns in env_keywords.items():
+                for pattern in patterns["file_patterns"]:
+                    if re.search(pattern, file_path):
+                        if env_name not in detected_envs:
+                            detected_envs[env_name] = []
+                        detected_envs[env_name].append(f"file path matches '{pattern}'")
+                        break
+
+        # Determine final environment based on detection results
+        if len(detected_envs) == 0:
+            # No environment detected
+            return "global", "No specific environment detected in PR title or file paths"
+        elif len(detected_envs) == 1:
+            # Single environment detected
+            env_name = list(detected_envs.keys())[0]
+            reasons = detected_envs[env_name]
+            return env_name, f"Detected as {env_name}: {', '.join(set(reasons))}"
+        else:
+            # Multiple environments detected - conflict
+            env_list = ", ".join(detected_envs.keys())
+            return "global", f"Conflicting environments detected ({env_list}), treating as global for safety"
+
     def _is_auto_merge_environment(self, pr_data: Dict[str, Any]) -> bool:
         """Determine if the PR is targeting an environment that allows auto-merge.
 
@@ -433,42 +510,24 @@ Labels: {", ".join(labels) if labels else "None"}"""
         # Get configured auto-merge environments
         auto_merge_envs = self.ai_config.get("auto_merge_environments", ["development"])
 
-        # Check branch name patterns
-        base_branch = pr_data.get("base", {}).get("ref", "").lower()
-        head_branch = pr_data.get("head", {}).get("ref", "").lower()
+        # Detect environment using new dual heuristics
+        detected_env, reason = self._detect_environment(pr_data)
 
-        # Define environment patterns mapping
-        env_patterns = {
-            "development": [
-                r"dev",
-                r"development",
-                r"staging",
-                r"test",
-                r"feature/",
-                r"hotfix/",
-                r"develop",
-            ],
-            "sandbox": [r"sandbox", r"sbx"],
-            "production": [r"main", r"master", r"prod", r"production", r"release/"],
-        }
+        logger.debug(f"Environment detection: {detected_env} - {reason}")
 
-        # Check if any configured environment matches
-        for env in auto_merge_envs:
-            env_lower = env.lower()
-            if env_lower in env_patterns:
-                patterns = env_patterns[env_lower]
-                for pattern in patterns:
-                    if re.search(pattern, base_branch) or re.search(
-                        pattern, head_branch
-                    ):
-                        logger.debug(
-                            f"Environment '{env}' detected for auto-merge (pattern: {pattern})"
-                        )
-                        return True
+        # "global" environment is never auto-mergeable (treated as production)
+        if detected_env == "global":
+            logger.debug("Environment is 'global', auto-merge disabled for safety")
+            return False
+
+        # Check if detected environment is in the auto-merge allowed list
+        if detected_env.lower() in [env.lower() for env in auto_merge_envs]:
+            logger.debug(f"Environment '{detected_env}' allows auto-merge")
+            return True
 
         # Default to False (conservative approach)
         logger.debug(
-            f"No auto-merge environment detected. Configured: {auto_merge_envs}"
+            f"Environment '{detected_env}' not in auto-merge list: {auto_merge_envs}"
         )
         return False
 
@@ -639,7 +698,8 @@ Labels: {", ".join(labels) if labels else "None"}"""
             pr_context = self._extract_pr_context(pr_data)
             plan_output = self._extract_terraform_plan(pr_data)
 
-            # Determine environment
+            # Detect environment using new dual heuristics
+            detected_env, env_reason = self._detect_environment(pr_data)
             is_auto_merge_env = self._is_auto_merge_environment(pr_data)
 
             logger.debug("🔍 PR Analysis Context:")
@@ -649,34 +709,77 @@ Labels: {", ".join(labels) if labels else "None"}"""
             )
             logger.debug(f"   Base Branch: {pr_data.get('base', {}).get('ref', 'N/A')}")
             logger.debug(f"   Head Branch: {pr_data.get('head', {}).get('ref', 'N/A')}")
+            logger.debug(f"   Detected Environment: {detected_env}")
+            logger.debug(f"   Environment Reason: {env_reason}")
             logger.debug(
-                f"   Environment: {'Auto-merge Allowed' if is_auto_merge_env else 'Auto-merge Disabled'} (for auto-merge only)"
+                f"   Auto-merge: {'Allowed' if is_auto_merge_env else 'Disabled'}"
             )
             logger.debug(
                 f"   Plan Output: {plan_output[:200]}{'...' if len(plan_output) > 200 else ''}"
             )
 
-            # Build prompt for AI - focus only on PR description, changelog, and plan output
+            # Build environment-specific guidance for the AI prompt
+            env_guidance = {
+                "development": """
+**ENVIRONMENT CONTEXT: DEVELOPMENT**
+This PR targets a DEVELOPMENT environment, which is used for experimentation and testing.
+- Development changes are GENERALLY SAFER and carry lower risk
+- Be MORE PERMISSIVE with confidence scores for development environments
+- Focus primarily on detecting obviously dangerous changes (e.g., major breaking changes, security issues)
+- Minor issues, experimental changes, and refactoring are ACCEPTABLE in development
+- Unless there are clear red flags, lean towards HIGHER confidence scores""",
+                "sandbox": """
+**ENVIRONMENT CONTEXT: SANDBOX**
+This PR targets a SANDBOX environment, which is a production-like environment requiring careful review.
+- Sandbox is effectively a PRODUCTION environment despite its name
+- Apply STRICT SCRUTINY to all changes
+- Be CONSERVATIVE with confidence scores
+- Even minor issues should lower the confidence score significantly
+- Require high certainty that changes are safe before approving""",
+                "production": """
+**ENVIRONMENT CONTEXT: PRODUCTION**
+This PR targets a PRODUCTION environment, requiring MAXIMUM CAUTION.
+- Apply the STRICTEST SCRUTINY to all changes
+- Be VERY CONSERVATIVE with confidence scores
+- Any uncertainty or potential issues should result in LOW confidence scores
+- Only the safest, most clearly documented changes should receive high scores""",
+                "global": f"""
+**ENVIRONMENT CONTEXT: GLOBAL (UNKNOWN OR CONFLICTING)**
+{env_reason}
+- Treating this as PRODUCTION-level risk for safety
+- Apply the STRICTEST SCRUTINY to all changes
+- Be VERY CONSERVATIVE with confidence scores
+- The inability to clearly identify the environment adds additional risk"""
+            }
+
+            env_context = env_guidance.get(detected_env, env_guidance["global"])
+
+            # Build prompt for AI with environment context
             prompt = f"""You are an expert DevOps engineer analyzing pull requests for automatic merging.
             Your task is to assess the risk level of changes and determine if they can be safely merged automatically.
-            Consider ONLY the following factors:
-            1. PR description and title
-            2. Changelog information (if linked or present in description)
-            3. Terraform plan output
-            DO NOT consider the environment (development vs production) for the confidence score.
-            The environment is only used to determine if auto-merge is allowed.
+
+            {env_context}
+
             Analyze this pull request for automatic merging safety:
             {pr_context}
+
             Terraform Plan Output:
             {plan_output if plan_output else "No plan output available"}
-            Based on the above information, assess the risk level and determine if this PR can be safely merged automatically.
+
+            Based on the above information, assess the risk level considering BOTH:
+            1. The nature of the changes (type, scope, breaking changes, etc.)
+            2. The target environment and its risk tolerance
+
             Consider:
-            - Type of changes (provider updates, dependency updates, etc.)
-            - Presence of breaking changes
-            - Impact on infrastructure
+            - Type of changes (provider updates, dependency updates, infrastructure changes, etc.)
+            - Presence of breaking changes or major refactoring
+            - Impact on infrastructure and services
             - Changelog information if available
-            - Terraform plan output analysis
+            - Terraform plan output analysis (resources created/modified/destroyed)
+            - **CRITICALLY: The environment context and its risk tolerance**
+
             Respond with ONLY: "SCORE: X% - EXPLANATION"
+            (Include a brief mention of how the environment influenced your assessment)
             """
 
             logger.debug("📝 Generated Prompt:")
@@ -732,6 +835,10 @@ Labels: {", ".join(labels) if labels else "None"}"""
                         f"Input: {input_tokens}, Output: {output_tokens}"
                     )
 
+                # Add environment information to metadata
+                metadata["environment"] = detected_env
+                metadata["environment_reason"] = env_reason
+
                 return score, explanation, is_auto_merge_env, metadata
             else:
                 # Fallback logic when AI is unavailable
@@ -757,6 +864,8 @@ Labels: {", ".join(labels) if labels else "None"}"""
                     "model": "none",
                     "input_tokens": 0,
                     "output_tokens": 0,
+                    "environment": detected_env,
+                    "environment_reason": env_reason,
                 }
                 if similarity_metadata:
                     fallback_metadata.update({"similarity": similarity_metadata})
@@ -771,11 +880,20 @@ Labels: {", ".join(labels) if labels else "None"}"""
         except Exception as e:
             logger.error(f"Error calculating confidence score: {e}")
             logger.debug(f"❌ Exception Details: {str(e)}")
+
+            # Try to detect environment even on error
+            try:
+                detected_env, env_reason = self._detect_environment(pr_data)
+            except Exception:
+                detected_env, env_reason = "global", "Error detecting environment"
+
             error_metadata = {
                 "provider": "error",
                 "model": "none",
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "environment": detected_env,
+                "environment_reason": env_reason,
             }
             return (
                 0,

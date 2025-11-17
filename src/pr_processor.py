@@ -296,10 +296,18 @@ class PRProcessor:
                 self.ai_calculator.calculate_confidence_score(pr)
             )
 
-            # Determine environment string
-            environment = (
-                "Auto-merge Allowed" if is_auto_merge_env else "Auto-merge Disabled"
-            )
+            # Determine environment string from metadata
+            detected_env = metadata.get("environment", "unknown")
+            env_reason = metadata.get("environment_reason", "")
+            environment_display = f"{detected_env.capitalize()}"
+            if env_reason:
+                environment_display += f" ({env_reason})"
+            if is_auto_merge_env:
+                environment_display += " - Auto-merge Allowed"
+            else:
+                environment_display += " - Auto-merge Disabled"
+
+            environment = environment_display
 
             # Check if auto-merge should be enabled
             enable_auto_merge = self.config.get("enable_ai_automerge_action", False)

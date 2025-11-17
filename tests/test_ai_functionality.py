@@ -146,24 +146,75 @@ class TestAIFunctionality(unittest.TestCase):
         self.assertIn("very safe update", explanation)
 
     def test_environment_detection(self):
-        """Test development vs production environment detection."""
+        """Test environment detection based on PR title and file paths."""
         calculator = AIConfidenceCalculator("test_token", None, self.github_config)
 
-        # Test development environment
-        dev_pr = self.sample_pr_data.copy()
-        dev_pr["head"]["ref"] = "feature/new-feature"
-        dev_pr["base"]["ref"] = "develop"
+        # Test development environment detection via title
+        dev_pr_title = self.sample_pr_data.copy()
+        dev_pr_title["title"] = "Update dependencies for development"
+        dev_pr_title["files"] = []
+        env, reason = calculator._detect_environment(dev_pr_title)
+        self.assertEqual(env, "development")
+        self.assertIn("title", reason.lower())
 
-        is_auto_merge_env = calculator._is_auto_merge_environment(dev_pr)
-        self.assertTrue(is_auto_merge_env)
+        # Test development environment detection via file path
+        dev_pr_file = self.sample_pr_data.copy()
+        dev_pr_file["title"] = "Update config"
+        dev_pr_file["files"] = [{"filename": "configs/account-development/main.tf"}]
+        env, reason = calculator._detect_environment(dev_pr_file)
+        self.assertEqual(env, "development")
+        self.assertIn("file path", reason.lower())
 
-        # Test production environment
+        # Test sandbox environment detection
+        sandbox_pr = self.sample_pr_data.copy()
+        sandbox_pr["title"] = "Deploy to sandbox environment"
+        sandbox_pr["files"] = []
+        env, reason = calculator._detect_environment(sandbox_pr)
+        self.assertEqual(env, "sandbox")
+
+        # Test production environment detection
         prod_pr = self.sample_pr_data.copy()
-        prod_pr["head"]["ref"] = "release/critical-fix"
-        prod_pr["base"]["ref"] = "main"
+        prod_pr["title"] = "Production hotfix"
+        prod_pr["files"] = []
+        env, reason = calculator._detect_environment(prod_pr)
+        self.assertEqual(env, "production")
 
-        is_auto_merge_env = calculator._is_auto_merge_environment(prod_pr)
-        self.assertFalse(is_auto_merge_env)
+        # Test global (no match)
+        global_pr = self.sample_pr_data.copy()
+        global_pr["title"] = "Update README"
+        global_pr["files"] = []
+        env, reason = calculator._detect_environment(global_pr)
+        self.assertEqual(env, "global")
+        self.assertIn("No specific environment", reason)
+
+        # Test global (conflict)
+        conflict_pr = self.sample_pr_data.copy()
+        conflict_pr["title"] = "Update for development and production"
+        conflict_pr["files"] = []
+        env, reason = calculator._detect_environment(conflict_pr)
+        self.assertEqual(env, "global")
+        self.assertIn("Conflicting", reason)
+
+        # Test auto-merge allowed for development
+        dev_pr = self.sample_pr_data.copy()
+        dev_pr["title"] = "Development update"
+        dev_pr["files"] = []
+        is_auto_merge = calculator._is_auto_merge_environment(dev_pr)
+        self.assertTrue(is_auto_merge)
+
+        # Test auto-merge disabled for production
+        prod_pr = self.sample_pr_data.copy()
+        prod_pr["title"] = "Production update"
+        prod_pr["files"] = []
+        is_auto_merge = calculator._is_auto_merge_environment(prod_pr)
+        self.assertFalse(is_auto_merge)
+
+        # Test auto-merge disabled for global
+        global_pr = self.sample_pr_data.copy()
+        global_pr["title"] = "Generic update"
+        global_pr["files"] = []
+        is_auto_merge = calculator._is_auto_merge_environment(global_pr)
+        self.assertFalse(is_auto_merge)
 
     @patch("ai_confidence.requests.post")
     def test_confidence_score_calculation_with_metadata(self, mock_post):
@@ -199,6 +250,8 @@ class TestAIFunctionality(unittest.TestCase):
         self.assertIn("model", metadata)
         self.assertIn("input_tokens", metadata)
         self.assertIn("output_tokens", metadata)
+        self.assertIn("environment", metadata)
+        self.assertIn("environment_reason", metadata)
 
     def test_fallback_confidence_calculation(self):
         """Test fallback confidence calculation when AI is unavailable."""
@@ -268,21 +321,33 @@ class TestAIFunctionality(unittest.TestCase):
 
         calculator = AIConfidenceCalculator("test_token", None, custom_config)
 
-        # Test development environment detection
-        pr_data_dev = {"base": {"ref": "develop"}, "head": {"ref": "feature/test"}}
+        # Test development environment detection (now based on title/files, not branches)
+        pr_data_dev = {
+            "title": "Update for development environment",
+            "base": {"ref": "main"},
+            "head": {"ref": "feature/test"},
+            "files": [],
+        }
         is_auto_merge_env = calculator._is_auto_merge_environment(pr_data_dev)
         self.assertTrue(is_auto_merge_env)
 
         # Test sandbox environment detection
         pr_data_sandbox = {
-            "base": {"ref": "sandbox"},
+            "title": "Deploy to sandbox",
+            "base": {"ref": "main"},
             "head": {"ref": "experiment/test"},
+            "files": [],
         }
         is_auto_merge_env = calculator._is_auto_merge_environment(pr_data_sandbox)
         self.assertTrue(is_auto_merge_env)
 
         # Test production environment (should not be auto-merge)
-        pr_data_prod = {"base": {"ref": "main"}, "head": {"ref": "release/v1.0"}}
+        pr_data_prod = {
+            "title": "Production release v1.0",
+            "base": {"ref": "main"},
+            "head": {"ref": "release/v1.0"},
+            "files": [],
+        }
         is_auto_merge_env = calculator._is_auto_merge_environment(pr_data_prod)
         self.assertFalse(is_auto_merge_env)
 
