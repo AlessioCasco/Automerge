@@ -525,14 +525,21 @@ class PRProcessor:
                                 "minimum_confidence_score", 100
                             )
                             if confidence_score >= minimum_score:
-                                logger.info(
-                                    f"   🏷️  Adding 'safe-for-automerge' label (confidence: {confidence_score}% >= {minimum_score}%)"
-                                )
+                                # Check if label is already present
                                 from .utils import LABEL_SAFE_FOR_AUTOMERGE
+                                existing_labels = [label["name"] for label in pr.get("labels", [])]
 
-                                self.github_client.set_label_to_pull_request(
-                                    [pr], LABEL_SAFE_FOR_AUTOMERGE
-                                )
+                                if LABEL_SAFE_FOR_AUTOMERGE not in existing_labels:
+                                    logger.info(
+                                        f"   🏷️  Adding '{LABEL_SAFE_FOR_AUTOMERGE}' label (confidence: {confidence_score}% >= {minimum_score}%)"
+                                    )
+                                    self.github_client.set_label_to_pull_request(
+                                        [pr], LABEL_SAFE_FOR_AUTOMERGE
+                                    )
+                                else:
+                                    logger.info(
+                                        f"   ✅ '{LABEL_SAFE_FOR_AUTOMERGE}' label already present (confidence: {confidence_score}% >= {minimum_score}%)"
+                                    )
 
                             # Auto-merge if conditions are met
                             if should_auto_merge:
