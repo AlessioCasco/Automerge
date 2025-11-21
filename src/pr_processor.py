@@ -18,6 +18,7 @@ try:
         LABEL_AUTOMERGE_IGNORE,
         LABEL_AUTOMERGE_NO_PROJECT,
         LABEL_AUTOMERGE_CONFLICT,
+        LABEL_SAFE_FOR_AUTOMERGE,
         COMMENT_ATLANTIS_PLAN,
         COMMENT_ATLANTIS_UNLOCK,
         COMMENT_IGNORE_AUTOMERGE,
@@ -255,8 +256,22 @@ class PRProcessor:
 
                 pr_data = response.json()
 
+                # Calculate AI confidence score
+                (
+                    confidence_score,
+                    explanation,
+                    is_auto_merge_env,
+                    metadata,
+                ) = self.ai_calculator.calculate_confidence_score(pr_data)
+
                 # Add AI confidence score comment
-                self._add_confidence_score_comment(pr_data, None)
+                self._add_confidence_score_comment(
+                    pr_data,
+                    confidence_score=confidence_score,
+                    explanation=explanation,
+                    is_auto_merge_env=is_auto_merge_env,
+                    metadata=metadata,
+                )
 
                 logger.info(
                     f"✅ Successfully analyzed test PR #{pr_number} from {repo}"
@@ -299,49 +314,43 @@ class PRProcessor:
                 )
 
     def _add_confidence_score_comment(
-        self, pr: Dict[str, Any], last_comment: Optional[Dict[str, Any]] = None
+        self,
+        pr: Dict[str, Any],
+        confidence_score: int,
+        explanation: str,
+        is_auto_merge_env: bool,
+        metadata: Dict[str, Any],
     ) -> None:
         """Add AI confidence score comment to PR.
 
         Args:
             pr: Pull request data
-            last_comment: Last comment from the PR (deprecated, kept for compatibility)
+            confidence_score: Pre-calculated confidence score
+            explanation: Pre-calculated explanation
+            is_auto_merge_env: Pre-calculated auto-merge environment flag
+            metadata: Pre-calculated metadata
         """
         if not self.ai_calculator:
             return
 
         try:
-            # Calculate confidence score
-            confidence_score, explanation, is_auto_merge_env, metadata = (
-                self.ai_calculator.calculate_confidence_score(pr)
-            )
 
-            # Determine environment string from metadata
+            # Format the comment using the template
             detected_env = metadata.get("environment", "unknown")
             env_reason = metadata.get("environment_reason", "")
-            environment_display = f"{detected_env.capitalize()}"
-            if env_reason:
-                environment_display += f" ({env_reason})"
-            if is_auto_merge_env:
-                environment_display += " - Auto-merge Allowed"
-            else:
-                environment_display += " - Auto-merge Disabled"
-
-            environment = environment_display
+            environment_display = f"{detected_env.title()} (Detected as {detected_env}: {env_reason})" if detected_env != "unknown" else "Unknown"
 
             # Check if auto-merge should be enabled
             enable_auto_merge = self.config.get("enable_ai_automerge_action", False)
             should_auto_merge = self.ai_calculator.should_auto_merge(
                 confidence_score, is_auto_merge_env, enable_auto_merge
             )
-
             auto_merge_status = "✅ Enabled" if should_auto_merge else "❌ Disabled"
 
-            # Format comment with metadata
-            comment = COMMENT_CONFIDENCE_SCORE_TEMPLATE.format(
+            formatted_comment = COMMENT_CONFIDENCE_SCORE_TEMPLATE.format(
                 score=confidence_score,
                 explanation=explanation,
-                environment=environment,
+                environment=environment_display,
                 auto_merge_status=auto_merge_status,
                 provider=metadata.get("provider", "Unknown"),
                 model=metadata.get("model", "unknown"),
@@ -357,23 +366,10 @@ class PRProcessor:
                 logger.info(
                     f"🤖 AI Confidence Score Analysis for {format_pr_info(pr)}:"
                 )
-                logger.info(f"   Confidence Score: {confidence_score}%")
-                logger.info(f"   Explanation: {explanation}")
-                logger.info(f"   Environment: {environment}")
-                logger.info(f"   Auto-merge Status: {auto_merge_status}")
-                logger.info(
-                    f"   AI Provider: {metadata.get('provider', 'Unknown')} ({metadata.get('model', 'unknown')})"
-                )
-                logger.info(
-                    f"   Token Usage: {metadata.get('input_tokens', 0)} input, {metadata.get('output_tokens', 0)} output"
-                )
-                logger.info("   ---")
-                logger.info(
-                    f"   *This analysis was performed by {metadata.get('provider', 'Unknown')} AI to assess the safety of automatic merging.*"
-                )
+                logger.info(f"   Comment: {formatted_comment}")
             else:
                 # Add comment to PR
-                self.github_client.comment_pull_req([pr], comment, update=False)
+                self.github_client.comment_pull_req([pr], formatted_comment, update=False)
 
             logger.info(
                 f"{format_pr_info(pr)}: AI Confidence Score {confidence_score}% - {auto_merge_status}"
@@ -382,8 +378,6 @@ class PRProcessor:
             # Apply safe-for-automerge label if score meets threshold
             minimum_score = self.config.get("minimum_confidence_score", 100)
             if confidence_score >= minimum_score:
-                from .utils import LABEL_SAFE_FOR_AUTOMERGE
-
                 existing_labels = [label["name"] for label in pr.get("labels", [])]
 
                 if LABEL_SAFE_FOR_AUTOMERGE not in existing_labels:
@@ -770,7 +764,7 @@ class PRProcessor:
                                         )
 
                         if needs_new_analysis:
-                            # Perform new AI analysis
+                            # Perform new AI analysis (ONE TIME ONLY)
                             logger.info("   🔍 Performing new AI analysis...")
                             (
                                 confidence_score,
@@ -787,8 +781,14 @@ class PRProcessor:
                                 confidence_score, is_auto_merge_env, enable_auto_merge
                             )
 
-                            # Add AI comment (this also applies the label if needed)
-                            self._add_confidence_score_comment(pr)
+                            # Add AI comment (passing pre-calculated values, no re-calculation)
+                            self._add_confidence_score_comment(
+                                pr,
+                                confidence_score=confidence_score,
+                                explanation=explanation,
+                                is_auto_merge_env=is_auto_merge_env,
+                                metadata=metadata,
+                            )
 
                         # Auto-merge if conditions are met (only if new analysis was done)
                         if needs_new_analysis and should_auto_merge:

@@ -478,7 +478,22 @@ class TestPRProcessorAI(unittest.TestCase):
             "issue_url": "https://api.github.com/repos/test/repo/issues/123",
         }
 
-        self.pr_processor._add_confidence_score_comment(pr_data)
+        # Calculate confidence score first
+        (
+            confidence_score,
+            explanation,
+            is_auto_merge_env,
+            metadata,
+        ) = self.pr_processor.ai_calculator.calculate_confidence_score(pr_data)
+
+        # Then add comment with pre-calculated values
+        self.pr_processor._add_confidence_score_comment(
+            pr_data,
+            confidence_score=confidence_score,
+            explanation=explanation,
+            is_auto_merge_env=is_auto_merge_env,
+            metadata=metadata,
+        )
 
         # Verify comment was posted with metadata
         self.github_client.comment_pull_req.assert_called_once()
@@ -525,7 +540,23 @@ class TestPRProcessorAI(unittest.TestCase):
 
             # Create processor with disabled comments
             processor = PRProcessor(self.github_client, config_with_disabled_comments)
-            processor._add_confidence_score_comment(pr_data)
+
+            # Calculate confidence score first
+            (
+                confidence_score,
+                explanation,
+                is_auto_merge_env,
+                metadata,
+            ) = processor.ai_calculator.calculate_confidence_score(pr_data)
+
+            # Then add comment with pre-calculated values
+            processor._add_confidence_score_comment(
+                pr_data,
+                confidence_score=confidence_score,
+                explanation=explanation,
+                is_auto_merge_env=is_auto_merge_env,
+                metadata=metadata,
+            )
 
             # Verify comment was NOT posted to PR
             self.github_client.comment_pull_req.assert_not_called()
