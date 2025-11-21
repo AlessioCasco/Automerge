@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 
+import os
 import re
 import logging
 import requests
 from typing import Dict, List, Any, Tuple, Optional
+from datetime import datetime
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
 try:
     from .github_client import GitHubClient
-    from .ai_confidence import AIConfidenceCalculator
+    from .ai_confidence import AIConfidenceCalculator, AIServiceError
     from .metrics import AutomergeMetrics
     from .utils import (
         LABEL_AUTOMERGE_IGNORE,
@@ -30,7 +32,7 @@ try:
     )
 except ImportError:
     from github_client import GitHubClient
-    from ai_confidence import AIConfidenceCalculator
+    from ai_confidence import AIConfidenceCalculator, AIServiceError
     from metrics import AutomergeMetrics
     from utils import (
         LABEL_AUTOMERGE_IGNORE,
@@ -260,9 +262,27 @@ class PRProcessor:
                     f"✅ Successfully analyzed test PR #{pr_number} from {repo}"
                 )
 
+            except AIServiceError as e:
+                logger.error(
+                    f"❌ AI Service Error for test PR #{pr_number} from {repo}: {str(e)}"
+                )
+                # Try to add failure comment to PR
+                try:
+                    status_code_msg = (
+                        f" (HTTP {e.status_code})" if e.status_code else ""
+                    )
+                    reason = f"Claude Code API Error{status_code_msg}"
+                    details = e.error_details if e.error_details else "Unknown error"
+                    recommendation = "The AI analysis could not be completed. Please try again later or review manually."
+                    self._add_ai_failure_comment(
+                        pr_data, reason, details, recommendation
+                    )
+                except Exception:
+                    pass  # If we can't add comment, just log and continue
+                continue
             except Exception as e:
                 logger.error(
-                    f"❌ Error processing test PR #{pr_number} from {repo}: {str(e)}"
+                    f"❌ Unexpected error processing test PR #{pr_number} from {repo}: {str(e)}"
                 )
                 continue
 
@@ -359,6 +379,25 @@ class PRProcessor:
                 f"{format_pr_info(pr)}: AI Confidence Score {confidence_score}% - {auto_merge_status}"
             )
 
+            # Apply safe-for-automerge label if score meets threshold
+            minimum_score = self.config.get("minimum_confidence_score", 100)
+            if confidence_score >= minimum_score:
+                from .utils import LABEL_SAFE_FOR_AUTOMERGE
+
+                existing_labels = [label["name"] for label in pr.get("labels", [])]
+
+                if LABEL_SAFE_FOR_AUTOMERGE not in existing_labels:
+                    logger.info(
+                        f"   🏷️  Adding '{LABEL_SAFE_FOR_AUTOMERGE}' label (confidence: {confidence_score}% >= {minimum_score}%)"
+                    )
+                    self.github_client.set_label_to_pull_request(
+                        [pr], LABEL_SAFE_FOR_AUTOMERGE
+                    )
+                else:
+                    logger.info(
+                        f"   ✅ '{LABEL_SAFE_FOR_AUTOMERGE}' label already present (confidence: {confidence_score}% >= {minimum_score}%)"
+                    )
+
         except Exception as e:
             # Fallback comment in case of error
             error_comment = COMMENT_CONFIDENCE_SCORE_ERROR.format(
@@ -426,6 +465,197 @@ class PRProcessor:
 
         logger.warning(f"{format_pr_info(pr)}: AI Analysis Failed - {reason}")
 
+    def _get_last_ai_comment(self, pr: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Get the most recent AI confidence score comment from PR.
+
+        Args:
+            pr: Pull request data
+
+        Returns:
+            Most recent AI comment dict or None if no AI comments found
+        """
+        try:
+            # Get all comments
+            comments_url = pr["issue_url"] + "/comments"
+            response = requests.get(
+                comments_url,
+                headers=self.github_client.headers,
+                timeout=DEFAULT_TIMEOUT,
+            )
+
+            if response.status_code != 200:
+                logger.warning(f"Failed to fetch comments for {format_pr_info(pr)}")
+                return None
+
+            comments = response.json()
+
+            # Find all AI comments (in reverse order, newest first)
+            ai_comments = [
+                comment
+                for comment in reversed(comments)
+                if "AI Confidence Score Analysis" in comment.get("body", "")
+            ]
+
+            if ai_comments:
+                return ai_comments[0]  # Return the most recent one
+
+            return None
+
+        except Exception as e:
+            logger.warning(
+                f"Error fetching AI comments for {format_pr_info(pr)}: {str(e)}"
+            )
+            return None
+
+    def _extract_score_from_comment(self, comment: Dict[str, Any]) -> Optional[int]:
+        """Extract confidence score from AI comment.
+
+        Args:
+            comment: Comment dictionary
+
+        Returns:
+            Confidence score as integer or None if not found
+        """
+        import re
+
+        body = comment.get("body", "")
+
+        # Try to extract score with pattern: **Confidence Score:** XX%
+        match = re.search(r"\*\*Confidence Score:\*\* (\d+)%", body)
+        if match:
+            return int(match.group(1))
+
+        return None
+
+    def _extract_most_similar_pr_from_comment(
+        self, comment: Dict[str, Any]
+    ) -> Optional[int]:
+        """Extract most similar PR number from AI comment with similarity boost.
+
+        Args:
+            comment: Comment dictionary
+
+        Returns:
+            Most similar PR number or None if not found
+        """
+        import re
+
+        body = comment.get("body", "")
+
+        # Pattern: [Similarity boost applied: XX% → YY%, similar to PR #ZZZ, evaluated N safe example(s)]
+        match = re.search(
+            r"Similarity boost applied: \d+% → \d+%, similar to PR #(\d+), evaluated \d+ safe example",
+            body,
+        )
+        if match:
+            return int(match.group(1))
+
+        return None
+
+    def _files_changed_since_comment(
+        self, pr: Dict[str, Any], comment: Dict[str, Any]
+    ) -> bool:
+        """Check if there were any commits to the PR after the given comment.
+
+        This checks for actual code commits, not just PR updates like comments,
+        labels, or reviews. Only returns True if there's at least one commit
+        after the comment timestamp.
+
+        Args:
+            pr: Pull request data
+            comment: Comment to check against
+
+        Returns:
+            True if there are commits after the comment, False otherwise
+        """
+        try:
+            comment_created_at = comment.get("created_at")
+            if not comment_created_at:
+                # If we can't determine comment time, assume files changed
+                return True
+
+            # Check for debug environment variable to force AI analysis
+            force_analysis = (
+                os.environ.get("DEBUG_FORCE_AI_ANALYSIS", "false").lower() == "true"
+            )
+            if force_analysis:
+                logger.info(
+                    "   🔧 DEBUG_FORCE_AI_ANALYSIS is enabled, forcing new AI analysis"
+                )
+                return True
+
+            # Get commits for this PR to check if code actually changed
+            commits_url = pr.get("commits_url")
+            if not commits_url:
+                logger.warning(
+                    f"No commits_url found for {format_pr_info(pr)}, assuming files changed"
+                )
+                return True
+
+            response = requests.get(
+                commits_url,
+                headers=self.github_client.headers,
+                timeout=DEFAULT_TIMEOUT,
+            )
+
+            if response.status_code != 200:
+                logger.warning(
+                    f"Failed to fetch commits for {format_pr_info(pr)}, assuming files changed"
+                )
+                return True
+
+            commits = response.json()
+
+            if not commits:
+                logger.info("   ℹ️  No commits found in PR")
+                return False
+
+            # Parse comment timestamp
+            comment_time = datetime.fromisoformat(
+                comment_created_at.replace("Z", "+00:00")
+            )
+
+            # Check if any commit was made after the comment
+            commits_after_comment = []
+            for commit in commits:
+                commit_date_str = commit.get("commit", {}).get("author", {}).get("date")
+                if commit_date_str:
+                    commit_time = datetime.fromisoformat(
+                        commit_date_str.replace("Z", "+00:00")
+                    )
+                    if commit_time > comment_time:
+                        commits_after_comment.append(
+                            {
+                                "sha": commit.get("sha", "")[:7],
+                                "date": commit_date_str,
+                                "message": commit.get("commit", {})
+                                .get("message", "")
+                                .split("\n")[0][:50],
+                            }
+                        )
+
+            if commits_after_comment:
+                logger.info(
+                    f"   📝 Found {len(commits_after_comment)} commit(s) after last AI analysis"
+                )
+                for c in commits_after_comment[:3]:  # Log first 3
+                    logger.info(f"      - {c['sha']}: {c['message']}")
+                if len(commits_after_comment) > 3:
+                    logger.info(f"      ... and {len(commits_after_comment) - 3} more")
+                return True
+            else:
+                logger.info(
+                    f"   ✅ No commits since last AI analysis ({comment_time.isoformat()})"
+                )
+                return False
+
+        except Exception as e:
+            logger.warning(
+                f"Error checking file changes for {format_pr_info(pr)}: {str(e)}"
+            )
+            # On error, assume files changed to be safe
+            return True
+
     def process_prs(self, all_pulls: List[Dict[str, Any]], force: bool) -> None:
         """Process all pull requests based on their categorization.
 
@@ -483,25 +713,65 @@ class PRProcessor:
                     )
 
                     try:
-                        # Check if AI comment already exists
-                        last_comment = self.github_client.get_last_comment(
-                            pr["issue_url"]
-                        )
-                        has_ai_comment = False
+                        # Check if there's a previous AI analysis
+                        last_ai_comment = self._get_last_ai_comment(pr)
+                        confidence_score = None
+                        should_auto_merge = False
+                        needs_new_analysis = True
 
-                        if (
-                            last_comment
-                            and "AI Confidence Score Analysis"
-                            in last_comment.get("body", "")
-                        ):
-                            has_ai_comment = True
-                            logger.info("   AI analysis already performed, skipping...")
+                        if last_ai_comment:
+                            # Check if files changed since last analysis
+                            files_changed = self._files_changed_since_comment(
+                                pr, last_ai_comment
+                            )
 
-                        if not has_ai_comment:
-                            # AI analysis will extract Terraform plan from comments automatically
-                            # No need to fetch plan separately since AIConfidenceCalculator handles it
+                            if not files_changed:
+                                # No changes, but check if most similar PR changed
+                                logger.info("   🔍 Checking if new safe examples are available...")
 
-                            # Perform AI analysis (it will extract plan from comments internally)
+                                # Get current most similar PR
+                                current_most_similar = self.ai_calculator.get_most_similar_pr(pr)
+
+                                # Get previous most similar PR from last comment
+                                previous_most_similar = self._extract_most_similar_pr_from_comment(
+                                    last_ai_comment
+                                )
+
+                                if current_most_similar and previous_most_similar and current_most_similar != previous_most_similar:
+                                    # Different similar PR found, re-analyze with new boost
+                                    logger.info(
+                                        f"   🔄 Found new similar PR #{current_most_similar} (was #{previous_most_similar}), re-analyzing..."
+                                    )
+                                    needs_new_analysis = True
+                                elif current_most_similar and not previous_most_similar:
+                                    # New similar PR found (previously had none)
+                                    logger.info(
+                                        f"   🆕 Found new similar PR #{current_most_similar} (previously none), re-analyzing..."
+                                    )
+                                    needs_new_analysis = True
+                                else:
+                                    # Same similar PR or no similar PRs, reuse score
+                                    confidence_score = self._extract_score_from_comment(
+                                        last_ai_comment
+                                    )
+                                    if confidence_score is not None:
+                                        if current_most_similar:
+                                            logger.info(
+                                                f"   ♻️  Reusing previous AI analysis (score: {confidence_score}%, similar PR unchanged: #{current_most_similar})"
+                                            )
+                                        else:
+                                            logger.info(
+                                                f"   ♻️  Reusing previous AI analysis (score: {confidence_score}%, no similar PRs)"
+                                            )
+                                        needs_new_analysis = False
+                                    else:
+                                        logger.warning(
+                                            "   ⚠️  Could not extract score from previous comment, will re-analyze"
+                                        )
+
+                        if needs_new_analysis:
+                            # Perform new AI analysis
+                            logger.info("   🔍 Performing new AI analysis...")
                             (
                                 confidence_score,
                                 explanation,
@@ -517,45 +787,49 @@ class PRProcessor:
                                 confidence_score, is_auto_merge_env, enable_auto_merge
                             )
 
-                            # Add AI comment
+                            # Add AI comment (this also applies the label if needed)
                             self._add_confidence_score_comment(pr)
 
-                            # Check if confidence score meets minimum threshold for safe-for-automerge label
-                            minimum_score = self.config.get(
-                                "minimum_confidence_score", 100
+                        # Auto-merge if conditions are met (only if new analysis was done)
+                        if needs_new_analysis and should_auto_merge:
+                            logger.info(
+                                f"   🚀 Auto-merging {format_pr_info(pr)} (confidence: {confidence_score}%, auto-merge environment)"
                             )
-                            if confidence_score >= minimum_score:
-                                # Check if label is already present
-                                from .utils import LABEL_SAFE_FOR_AUTOMERGE
-                                existing_labels = [label["name"] for label in pr.get("labels", [])]
+                            self.github_client.merge_pull_req([pr])
+                            continue  # Skip standard unlock process
+                        elif needs_new_analysis:
+                            logger.info(
+                                f"   📋 Manual merge required for {format_pr_info(pr)} (confidence: {confidence_score}%)"
+                            )
 
-                                if LABEL_SAFE_FOR_AUTOMERGE not in existing_labels:
-                                    logger.info(
-                                        f"   🏷️  Adding '{LABEL_SAFE_FOR_AUTOMERGE}' label (confidence: {confidence_score}% >= {minimum_score}%)"
-                                    )
-                                    self.github_client.set_label_to_pull_request(
-                                        [pr], LABEL_SAFE_FOR_AUTOMERGE
-                                    )
-                                else:
-                                    logger.info(
-                                        f"   ✅ '{LABEL_SAFE_FOR_AUTOMERGE}' label already present (confidence: {confidence_score}% >= {minimum_score}%)"
-                                    )
+                    except AIServiceError as e:
+                        logger.error(
+                            f"   ❌ AI Service Error for {format_pr_info(pr)}: {str(e)}"
+                        )
+                        # Add failure comment to PR with error details
+                        status_code_msg = (
+                            f" (HTTP {e.status_code})" if e.status_code else ""
+                        )
+                        reason = f"Claude Code API Error{status_code_msg}"
+                        details = (
+                            e.error_details if e.error_details else "Unknown error"
+                        )
+                        recommendation = "The AI analysis could not be completed. This PR will be processed with standard unlock flow. Please review manually."
 
-                            # Auto-merge if conditions are met
-                            if should_auto_merge:
-                                logger.info(
-                                    f"   🚀 Auto-merging {format_pr_info(pr)} (confidence: {confidence_score}%, auto-merge environment)"
-                                )
-                                self.github_client.merge_pull_req([pr])
-                                continue  # Skip standard unlock process
-                            else:
-                                logger.info(
-                                    f"   📋 Manual merge required for {format_pr_info(pr)} (confidence: {confidence_score}%, auto-merge env: {is_auto_merge_env})"
-                                )
-
+                        self._add_ai_failure_comment(
+                            pr, reason, details, recommendation
+                        )
+                        # Skip AI analysis and continue with standard unlock process
                     except Exception as e:
                         logger.error(
-                            f"   ❌ Error during AI analysis for {format_pr_info(pr)}: {str(e)}"
+                            f"   ❌ Unexpected error during AI analysis for {format_pr_info(pr)}: {str(e)}"
+                        )
+                        # For unexpected errors, add a generic failure comment
+                        self._add_ai_failure_comment(
+                            pr,
+                            "Unexpected Error",
+                            str(e),
+                            "An unexpected error occurred during AI analysis. Please review manually.",
                         )
                         # Continue with standard unlock process
 

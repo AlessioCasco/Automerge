@@ -31,6 +31,23 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 DEFAULT_TIMEOUT = 30
 
 
+class AIServiceError(Exception):
+    """Exception raised when AI service is unavailable or returns an error."""
+
+    def __init__(self, message: str, status_code: Optional[int] = None, error_details: Optional[str] = None):
+        """Initialize AI service error.
+
+        Args:
+            message: Error message
+            status_code: HTTP status code if applicable
+            error_details: Additional error details
+        """
+        self.message = message
+        self.status_code = status_code
+        self.error_details = error_details
+        super().__init__(self.message)
+
+
 class AIConfidenceCalculator:
     """Handles AI-powered confidence score calculation for PRs."""
 
@@ -341,32 +358,27 @@ Labels: {", ".join(labels) if labels else "None"}"""
                     f"Claude Code API error: {response.status_code} - {response.text}"
                 )
                 logger.debug(f"   Error Response: {response.text}")
-                return None, {
-                    "provider": "Claude Code",
-                    "model": model,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                }
+                raise AIServiceError(
+                    "Claude Code API returned error",
+                    status_code=response.status_code,
+                    error_details=response.text
+                )
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error calling Claude Code API: {e}")
-            return None, {
-                "provider": "Claude Code",
-                "model": "unknown",
-                "input_tokens": 0,
-                "output_tokens": 0,
-            }
+            raise AIServiceError(
+                "Network error calling Claude Code API",
+                error_details=str(e)
+            )
         except (KeyError, ValueError, json.JSONDecodeError) as e:
             logger.error(f"Error parsing Claude Code API response: {e}")
             logger.debug(
                 f"   Raw Response: {response.text if 'response' in locals() else 'N/A'}"
             )
-            return None, {
-                "provider": "Claude Code",
-                "model": "unknown",
-                "input_tokens": 0,
-                "output_tokens": 0,
-            }
+            raise AIServiceError(
+                "Error parsing Claude Code API response",
+                error_details=str(e)
+            )
 
     def _parse_ai_response(self, ai_response: str) -> Tuple[int, str]:
         """Parse AI response to extract confidence score and explanation.
@@ -530,6 +542,77 @@ Labels: {", ".join(labels) if labels else "None"}"""
             f"Environment '{detected_env}' not in auto-merge list: {auto_merge_envs}"
         )
         return False
+
+    def get_most_similar_pr(self, pr_data: Dict[str, Any]) -> Optional[int]:
+        """Calculate embeddings and return the most similar PR number without applying boost.
+
+        Args:
+            pr_data: Pull request data
+
+        Returns:
+            Most similar PR number or None if not found
+        """
+        if not self.embeddings_service or not self.embeddings_service.enabled:
+            return None
+
+        try:
+            repo_name = pr_data.get("head", {}).get("repo", {}).get("name", "")
+            pr_number = pr_data.get("number")
+
+            if not repo_name or not pr_number:
+                return None
+
+            # Get PRs with 'automerge-safe-example' label
+            if not self.github_client:
+                return None
+
+            max_prs = self.embeddings_service.max_cached_prs
+            safe_prs = self.github_client.get_prs_with_label(
+                repo_name, "automerge-safe-example", limit=max_prs
+            )
+
+            if not safe_prs:
+                return None
+
+            safe_pr_numbers = [pr.get("number") for pr in safe_prs if pr.get("number")]
+            if not safe_pr_numbers:
+                return None
+
+            # Get cached embeddings
+            historical_embeddings = self.embeddings_service.get_historical_safe_prs(
+                repo_name, safe_pr_numbers, self.github_client
+            )
+
+            if not historical_embeddings:
+                return None
+
+            # Prepare current PR data for embeddings
+            current_pr_data = {
+                "pr_number": pr_number,
+                "repo_name": repo_name,
+                "files": pr_data.get("files", []),
+                "diff": pr_data.get("diff", ""),
+                "terraform_plan": self._extract_terraform_plan(pr_data),
+            }
+
+            # Calculate embeddings for current PR
+            current_embeddings = self.embeddings_service.calculate_pr_embeddings(
+                current_pr_data
+            )
+
+            if not current_embeddings:
+                return None
+
+            # Calculate similarity to find most similar PR
+            _, most_similar_pr = self.embeddings_service.calculate_similarity_boost(
+                current_embeddings, historical_embeddings
+            )
+
+            return most_similar_pr
+
+        except Exception as e:
+            logger.warning(f"Error calculating most similar PR: {e}")
+            return None
 
     def _apply_similarity_boost(
         self, base_score: int, pr_data: Dict[str, Any]
@@ -788,193 +871,71 @@ This PR targets a PRODUCTION environment, requiring MAXIMUM CAUTION.
                 f"   Prompt Preview: {prompt[:500]}{'...' if len(prompt) > 500 else ''}"
             )
 
-            # Call AI and get metadata
+            # Call AI and get metadata (will raise AIServiceError if it fails)
             ai_response, metadata = self._call_ai_provider_with_metadata(prompt)
 
-            if ai_response:
-                logger.debug("✅ AI Response Received:")
-                logger.debug(f"   Response: {ai_response}")
+            logger.debug("✅ AI Response Received:")
+            logger.debug(f"   Response: {ai_response}")
 
-                score, explanation = self._parse_ai_response(ai_response)
-                logger.debug("📊 Parsed Results:")
-                logger.debug(f"   Confidence Score: {score}%")
-                logger.debug(f"   Explanation: {explanation}")
+            score, explanation = self._parse_ai_response(ai_response)
+            logger.debug("📊 Parsed Results:")
+            logger.debug(f"   Confidence Score: {score}%")
+            logger.debug(f"   Explanation: {explanation}")
 
-                # Apply similarity boost
-                boosted_score, similarity_metadata = self._apply_similarity_boost(
-                    score, pr_data
-                )
-                if similarity_metadata:
-                    metadata.update({"similarity": similarity_metadata})
-                    if boosted_score != score:
-                        explanation += f" [Similarity boost applied: {score}% → {boosted_score}%, similar to PR #{similarity_metadata.get('most_similar_pr')}]"
-                score = boosted_score
-
-                # Record token usage metrics
-                if self.metrics and metadata:
-                    repo_name = (
-                        pr_data.get("head", {}).get("repo", {}).get("name", "unknown")
-                    )
-                    model_name = metadata.get("model", "unknown")
-                    engine_name = (
-                        metadata.get("provider", "unknown").lower().replace(" ", "-")
-                    )
-                    input_tokens = metadata.get("input_tokens", 0)
-                    output_tokens = metadata.get("output_tokens", 0)
-
-                    self.metrics.record_token_usage(
-                        repo=repo_name,
-                        model=model_name,
-                        engine=engine_name,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                    )
-
-                    logger.debug(
-                        f"📈 Recorded metrics - Repo: {repo_name}, Model: {model_name}, Engine: {engine_name}, "
-                        f"Input: {input_tokens}, Output: {output_tokens}"
-                    )
-
-                # Add environment information to metadata
-                metadata["environment"] = detected_env
-                metadata["environment_reason"] = env_reason
-
-                return score, explanation, is_auto_merge_env, metadata
-            else:
-                # Fallback logic when AI is unavailable
-                logger.warning("AI service unavailable, using fallback logic")
-                logger.debug("🔄 Using Fallback Logic")
-
-                fallback_score, fallback_explanation, fallback_is_auto_merge = (
-                    self._fallback_confidence_calculation(
-                        pr_data, plan_output, is_auto_merge_env
-                    )
-                )
-
-                # Apply similarity boost to fallback score too
-                boosted_fallback_score, similarity_metadata = (
-                    self._apply_similarity_boost(fallback_score, pr_data)
-                )
-                if similarity_metadata and boosted_fallback_score != fallback_score:
-                    fallback_explanation += f" [Similarity boost applied: {fallback_score}% → {boosted_fallback_score}%, similar to PR #{similarity_metadata.get('most_similar_pr')}]"
-                fallback_score = boosted_fallback_score
-
-                fallback_metadata = {
-                    "provider": "fallback",
-                    "model": "none",
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "environment": detected_env,
-                    "environment_reason": env_reason,
-                }
-                if similarity_metadata:
-                    fallback_metadata.update({"similarity": similarity_metadata})
-
-                return (
-                    fallback_score,
-                    fallback_explanation,
-                    fallback_is_auto_merge,
-                    fallback_metadata,
-                )
-
-        except Exception as e:
-            logger.error(f"Error calculating confidence score: {e}")
-            logger.debug(f"❌ Exception Details: {str(e)}")
-
-            # Try to detect environment even on error
-            try:
-                detected_env, env_reason = self._detect_environment(pr_data)
-            except Exception:
-                detected_env, env_reason = "global", "Error detecting environment"
-
-            error_metadata = {
-                "provider": "error",
-                "model": "none",
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "environment": detected_env,
-                "environment_reason": env_reason,
-            }
-            return (
-                0,
-                f"Error calculating confidence score: {str(e)}",
-                False,
-                error_metadata,
+            # Apply similarity boost
+            boosted_score, similarity_metadata = self._apply_similarity_boost(
+                score, pr_data
             )
+            if similarity_metadata:
+                metadata.update({"similarity": similarity_metadata})
+                if boosted_score != score:
+                    total_examples = similarity_metadata.get("historical_prs_count", 0)
+                    most_similar = similarity_metadata.get("most_similar_pr")
+                    explanation += f" [Similarity boost applied: {score}% → {boosted_score}%, similar to PR #{most_similar}, evaluated {total_examples} safe example(s)]"
+            score = boosted_score
 
-    def _fallback_confidence_calculation(
-        self, pr_data: Dict[str, Any], plan_output: str, is_auto_merge_env: bool
-    ) -> Tuple[int, str, bool]:
-        """Fallback confidence calculation when AI is unavailable.
+            # Record token usage metrics
+            if self.metrics and metadata:
+                repo_name = (
+                    pr_data.get("head", {}).get("repo", {}).get("name", "unknown")
+                )
+                model_name = metadata.get("model", "unknown")
+                engine_name = (
+                    metadata.get("provider", "unknown").lower().replace(" ", "-")
+                )
+                input_tokens = metadata.get("input_tokens", 0)
+                output_tokens = metadata.get("output_tokens", 0)
 
-        Args:
-            pr_data: Pull request data
-            plan_output: Terraform plan output
-            is_auto_merge_env: Whether this environment allows auto-merge
+                self.metrics.record_token_usage(
+                    repo=repo_name,
+                    model=model_name,
+                    engine=engine_name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                )
 
-        Returns:
-            Tuple of (confidence_score, explanation, is_auto_merge_env)
-        """
-        # Base score starts at 50%
-        score = 50
-        explanation_parts = []
+                logger.debug(
+                    f"📈 Recorded metrics - Repo: {repo_name}, Model: {model_name}, Engine: {engine_name}, "
+                    f"Input: {input_tokens}, Output: {output_tokens}"
+                )
 
-        # Analyze PR title and description
-        title = pr_data.get("title", "").lower()
-        body = pr_data.get("body", "").lower()
+            # Add environment information to metadata
+            metadata["environment"] = detected_env
+            metadata["environment_reason"] = env_reason
 
-        # Check for dependency updates (usually safe)
-        if any(
-            keyword in title
-            for keyword in ["dependencies", "dependency", "update", "bump"]
-        ):
-            score += 20
-            explanation_parts.append("Dependency update detected")
+            return score, explanation, is_auto_merge_env, metadata
 
-        # Check for provider updates (usually safe)
-        if any(keyword in title for keyword in ["provider", "terraform"]):
-            score += 15
-            explanation_parts.append("Provider update detected")
-
-        # Check for breaking changes in description
-        if any(
-            keyword in body
-            for keyword in ["breaking", "breaking change", "deprecated", "removed"]
-        ):
-            score -= 30
-            explanation_parts.append("Breaking changes detected")
-
-        # Analyze Terraform plan output
-        if plan_output:
-            # Check for no changes (very safe)
-            if "No changes" in plan_output:
-                score += 25
-                explanation_parts.append("No infrastructure changes")
-
-            # Check for destructive changes
-            if (
-                "destroy" in plan_output.lower()
-                or "update" in plan_output.lower()
-                or "replace" in plan_output.lower()
-            ):
-                score -= 40
-                explanation_parts.append("Destructive changes detected")
-
-            # Check for resource additions (moderate risk)
-            if "to add" in plan_output and "0 to add" not in plan_output:
-                score -= 10
-                explanation_parts.append("New resources being added")
-
-        # Ensure score is within 0-100 range
-        score = max(0, min(100, score))
-
-        # Create explanation
-        if explanation_parts:
-            explanation = " - ".join(explanation_parts)
-        else:
-            explanation = "Standard risk assessment"
-
-        return score, explanation, is_auto_merge_env
+        except AIServiceError:
+            # Re-raise AIServiceError to be handled by caller
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error calculating confidence score: {e}")
+            logger.debug(f"❌ Exception Details: {str(e)}")
+            # Wrap unexpected errors in AIServiceError
+            raise AIServiceError(
+                "Unexpected error during AI analysis",
+                error_details=str(e)
+            )
 
     def should_auto_merge(
         self, confidence_score: int, is_auto_merge_env: bool, enable_auto_merge: bool

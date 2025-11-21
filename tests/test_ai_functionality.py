@@ -253,21 +253,8 @@ class TestAIFunctionality(unittest.TestCase):
         self.assertIn("environment", metadata)
         self.assertIn("environment_reason", metadata)
 
-    def test_fallback_confidence_calculation(self):
-        """Test fallback confidence calculation when AI is unavailable."""
-        calculator = AIConfidenceCalculator("test_token", None, self.github_config)
-
-        # Test with dependency update
-        dep_pr = self.sample_pr_data.copy()
-        dep_pr["title"] = "[DEPENDENCIES] Update provider"
-
-        score, explanation, is_dev = calculator._fallback_confidence_calculation(
-            dep_pr, "No changes. Your infrastructure matches the configuration", True
-        )
-
-        self.assertGreater(score, 50)  # Should be higher for dependency updates
-        self.assertIsInstance(explanation, str)
-        self.assertTrue(is_dev)
+    # test_fallback_confidence_calculation removed - fallback logic has been removed
+    # AI errors now raise AIServiceError instead of falling back to heuristic scoring
 
     def test_auto_merge_logic(self):
         """Test auto-merge decision logic."""
