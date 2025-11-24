@@ -19,6 +19,7 @@ try:
         LABEL_AUTOMERGE_NO_PROJECT,
         LABEL_AUTOMERGE_CONFLICT,
         LABEL_SAFE_FOR_AUTOMERGE,
+        LABEL_AUTOMERGE_SAFE_EXAMPLE,
         COMMENT_ATLANTIS_PLAN,
         COMMENT_ATLANTIS_UNLOCK,
         COMMENT_IGNORE_AUTOMERGE,
@@ -39,6 +40,8 @@ except ImportError:
         LABEL_AUTOMERGE_IGNORE,
         LABEL_AUTOMERGE_NO_PROJECT,
         LABEL_AUTOMERGE_CONFLICT,
+        LABEL_SAFE_FOR_AUTOMERGE,
+        LABEL_AUTOMERGE_SAFE_EXAMPLE,
         COMMENT_ATLANTIS_PLAN,
         COMMENT_ATLANTIS_UNLOCK,
         COMMENT_IGNORE_AUTOMERGE,
@@ -746,6 +749,10 @@ class PRProcessor:
         if pr_list_no_changes:
             logger.info("Merging what's possible")
             self.github_client.merge_pull_req(pr_list_no_changes)
+            # Add safe example label to merged PRs
+            self.github_client.set_label_to_pull_request(
+                pr_list_no_changes, LABEL_AUTOMERGE_SAFE_EXAMPLE
+            )
 
         if list_dismissed:
             logger.info(
