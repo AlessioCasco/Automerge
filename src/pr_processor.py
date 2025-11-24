@@ -5,7 +5,7 @@ import re
 import logging
 import requests
 from typing import Dict, List, Any, Tuple, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -501,6 +501,83 @@ class PRProcessor:
             )
             return None
 
+    def _has_recent_valid_ai_comment(
+        self, pr: Dict[str, Any], hours: int = 3
+    ) -> bool:
+        """Check if there's a valid AI comment from the same night (within last N hours).
+
+        This prevents duplicate AI analyses when cronjob runs overlap.
+        A valid comment is one that doesn't contain error messages.
+
+        Args:
+            pr: Pull request data
+            hours: Number of hours to look back (default: 3 hours for same night)
+
+        Returns:
+            True if a valid recent AI comment exists, False otherwise
+        """
+        try:
+            # Get all comments
+            comments_url = pr["issue_url"] + "/comments"
+            response = requests.get(
+                comments_url,
+                headers=self.github_client.headers,
+                timeout=DEFAULT_TIMEOUT,
+            )
+
+            if response.status_code != 200:
+                logger.warning(
+                    f"Failed to fetch comments for {format_pr_info(pr)} in temporal check"
+                )
+                return False
+
+            comments = response.json()
+
+            # Get current time
+            now = datetime.now(timezone.utc)
+            time_threshold = now - timedelta(hours=hours)
+
+            # Check all AI comments in reverse order (newest first)
+            for comment in reversed(comments):
+                body = comment.get("body", "")
+                if "AI Confidence Score Analysis" not in body:
+                    continue
+
+                # Check timestamp
+                created_at = comment.get("created_at")
+                if not created_at:
+                    continue
+
+                comment_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+
+                # If comment is within the time window
+                if comment_time >= time_threshold:
+                    # Check if it's a valid comment (no errors)
+                    error_indicators = [
+                        "Error",
+                        "attempted relative import",
+                        "Failed",
+                        "Exception",
+                    ]
+
+                    has_errors = any(indicator in body for indicator in error_indicators)
+
+                    if not has_errors:
+                        logger.info(
+                            f"   ⏰ Found valid AI comment from {comment_time.strftime('%Y-%m-%d %H:%M:%S UTC')} "
+                            f"(within last {hours}h), skipping duplicate analysis"
+                        )
+                        return True
+
+            return False
+
+        except Exception as e:
+            logger.warning(
+                f"Error in temporal AI comment check for {format_pr_info(pr)}: {str(e)}"
+            )
+            # If we can't check, err on the side of caution and allow analysis
+            return False
+
     def _extract_score_from_comment(self, comment: Dict[str, Any]) -> Optional[int]:
         """Extract confidence score from AI comment.
 
@@ -707,100 +784,108 @@ class PRProcessor:
                     )
 
                     try:
-                        # Check if there's a previous AI analysis
-                        last_ai_comment = self._get_last_ai_comment(pr)
-                        confidence_score = None
-                        should_auto_merge = False
-                        needs_new_analysis = True
-
-                        if last_ai_comment:
-                            # Check if files changed since last analysis
-                            files_changed = self._files_changed_since_comment(
-                                pr, last_ai_comment
+                        # FIRST: Check if there's a recent valid AI comment from same night
+                        # This prevents duplicate analyses when cronjob runs overlap
+                        if self._has_recent_valid_ai_comment(pr, hours=3):
+                            logger.info(
+                                f"   ⏭️  Skipping AI analysis for {format_pr_info(pr)} - valid comment already exists from same night"
                             )
+                            # Don't continue - let standard unlock process run at line 921+
+                        else:
+                            # Check if there's a previous AI analysis
+                            last_ai_comment = self._get_last_ai_comment(pr)
+                            confidence_score = None
+                            should_auto_merge = False
+                            needs_new_analysis = True
 
-                            if not files_changed:
-                                # No changes, but check if most similar PR changed
-                                logger.info("   🔍 Checking if new safe examples are available...")
-
-                                # Get current most similar PR
-                                current_most_similar = self.ai_calculator.get_most_similar_pr(pr)
-
-                                # Get previous most similar PR from last comment
-                                previous_most_similar = self._extract_most_similar_pr_from_comment(
-                                    last_ai_comment
+                            if last_ai_comment:
+                                # Check if files changed since last analysis
+                                files_changed = self._files_changed_since_comment(
+                                    pr, last_ai_comment
                                 )
 
-                                if current_most_similar and previous_most_similar and current_most_similar != previous_most_similar:
-                                    # Different similar PR found, re-analyze with new boost
-                                    logger.info(
-                                        f"   🔄 Found new similar PR #{current_most_similar} (was #{previous_most_similar}), re-analyzing..."
-                                    )
-                                    needs_new_analysis = True
-                                elif current_most_similar and not previous_most_similar:
-                                    # New similar PR found (previously had none)
-                                    logger.info(
-                                        f"   🆕 Found new similar PR #{current_most_similar} (previously none), re-analyzing..."
-                                    )
-                                    needs_new_analysis = True
-                                else:
-                                    # Same similar PR or no similar PRs, reuse score
-                                    confidence_score = self._extract_score_from_comment(
+                                if not files_changed:
+                                    # No changes, but check if most similar PR changed
+                                    logger.info("   🔍 Checking if new safe examples are available...")
+
+                                    # Get current most similar PR
+                                    current_most_similar = self.ai_calculator.get_most_similar_pr(pr)
+
+                                    # Get previous most similar PR from last comment
+                                    previous_most_similar = self._extract_most_similar_pr_from_comment(
                                         last_ai_comment
                                     )
-                                    if confidence_score is not None:
-                                        if current_most_similar:
-                                            logger.info(
-                                                f"   ♻️  Reusing previous AI analysis (score: {confidence_score}%, similar PR unchanged: #{current_most_similar})"
-                                            )
-                                        else:
-                                            logger.info(
-                                                f"   ♻️  Reusing previous AI analysis (score: {confidence_score}%, no similar PRs)"
-                                            )
-                                        needs_new_analysis = False
-                                    else:
-                                        logger.warning(
-                                            "   ⚠️  Could not extract score from previous comment, will re-analyze"
+
+                                    if current_most_similar and previous_most_similar and current_most_similar != previous_most_similar:
+                                        # Different similar PR found, re-analyze with new boost
+                                        logger.info(
+                                            f"   🔄 Found new similar PR #{current_most_similar} (was #{previous_most_similar}), re-analyzing..."
                                         )
+                                        needs_new_analysis = True
+                                    elif current_most_similar and not previous_most_similar:
+                                        # New similar PR found (previously had none)
+                                        logger.info(
+                                            f"   🆕 Found new similar PR #{current_most_similar} (previously none), re-analyzing..."
+                                        )
+                                        needs_new_analysis = True
+                                    else:
+                                        # Same similar PR or no similar PRs, reuse score
+                                        confidence_score = self._extract_score_from_comment(
+                                            last_ai_comment
+                                        )
+                                        if confidence_score is not None:
+                                            if current_most_similar:
+                                                logger.info(
+                                                    f"   ♻️  Reusing previous AI analysis (score: {confidence_score}%, similar PR unchanged: #{current_most_similar})"
+                                                )
+                                            else:
+                                                logger.info(
+                                                    f"   ♻️  Reusing previous AI analysis (score: {confidence_score}%, no similar PRs)"
+                                                )
+                                            needs_new_analysis = False
+                                        else:
+                                            logger.warning(
+                                                "   ⚠️  Could not extract score from previous comment, will re-analyze"
+                                            )
 
-                        if needs_new_analysis:
-                            # Perform new AI analysis (ONE TIME ONLY)
-                            logger.info("   🔍 Performing new AI analysis...")
-                            (
-                                confidence_score,
-                                explanation,
-                                is_auto_merge_env,
-                                metadata,
-                            ) = self.ai_calculator.calculate_confidence_score(pr)
+                            if needs_new_analysis:
+                                # Perform new AI analysis (ONE TIME ONLY)
+                                logger.info("   🔍 Performing new AI analysis...")
+                                (
+                                    confidence_score,
+                                    explanation,
+                                    is_auto_merge_env,
+                                    metadata,
+                                ) = self.ai_calculator.calculate_confidence_score(pr)
 
-                            # Check if auto-merge should be enabled
-                            enable_auto_merge = self.config.get(
-                                "enable_ai_automerge_action", False
-                            )
-                            should_auto_merge = self.ai_calculator.should_auto_merge(
-                                confidence_score, is_auto_merge_env, enable_auto_merge
-                            )
+                                # Check if auto-merge should be enabled
+                                enable_auto_merge = self.config.get(
+                                    "enable_ai_automerge_action", False
+                                )
+                                should_auto_merge = self.ai_calculator.should_auto_merge(
+                                    confidence_score, is_auto_merge_env, enable_auto_merge
+                                )
 
-                            # Add AI comment (passing pre-calculated values, no re-calculation)
-                            self._add_confidence_score_comment(
-                                pr,
-                                confidence_score=confidence_score,
-                                explanation=explanation,
-                                is_auto_merge_env=is_auto_merge_env,
-                                metadata=metadata,
-                            )
+                                # Add AI comment (passing pre-calculated values, no re-calculation)
+                                self._add_confidence_score_comment(
+                                    pr,
+                                    confidence_score=confidence_score,
+                                    explanation=explanation,
+                                    is_auto_merge_env=is_auto_merge_env,
+                                    metadata=metadata,
+                                )
 
-                        # Auto-merge if conditions are met (only if new analysis was done)
-                        if needs_new_analysis and should_auto_merge:
-                            logger.info(
-                                f"   🚀 Auto-merging {format_pr_info(pr)} (confidence: {confidence_score}%, auto-merge environment)"
-                            )
-                            self.github_client.merge_pull_req([pr])
-                            continue  # Skip standard unlock process
-                        elif needs_new_analysis:
-                            logger.info(
-                                f"   📋 Manual merge required for {format_pr_info(pr)} (confidence: {confidence_score}%)"
-                            )
+                            # Auto-merge if conditions are met (only if new analysis was done)
+                            if needs_new_analysis and should_auto_merge:
+                                logger.info(
+                                    f"   🚀 Auto-merging {format_pr_info(pr)} (confidence: {confidence_score}%, auto-merge environment)"
+                                )
+                                self.github_client.merge_pull_req([pr])
+                                continue  # Skip standard unlock process
+                            elif needs_new_analysis:
+                                logger.info(
+                                    f"   📋 Manual merge required for {format_pr_info(pr)} (confidence: {confidence_score}%)"
+                                )
 
                     except AIServiceError as e:
                         logger.error(
