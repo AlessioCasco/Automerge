@@ -676,14 +676,7 @@ class TestPRProcessorIntegration(unittest.TestCase):
         self.mock_client.multi_comments_pull_req.assert_called_once_with(
             [pr_with_diffs], COMMENT_ATLANTIS_UNLOCK, COMMENT_IGNORE_AUTOMERGE
         )
-        # Verify set_label_to_pull_request is called twice:
-        # Once for safe example label on merged PR, once for automerge ignore on PR with diffs
-        assert self.mock_client.set_label_to_pull_request.call_count == 2
-        from src.utils import LABEL_AUTOMERGE_SAFE_EXAMPLE
-        self.mock_client.set_label_to_pull_request.assert_any_call(
-            [pr_no_changes], LABEL_AUTOMERGE_SAFE_EXAMPLE
-        )
-        self.mock_client.set_label_to_pull_request.assert_any_call(
+        self.mock_client.set_label_to_pull_request.assert_called_once_with(
             [pr_with_diffs], LABEL_AUTOMERGE_IGNORE
         )
 
