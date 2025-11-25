@@ -10,5 +10,37 @@
     "repos" : [
         "terraform-vault",
         "terraform-aws"
+    ],
+    "enable_ai_confidence_score" : false,
+    "enable_ai_automerge_action" : false,
+    "disable_pr_comments" : false,
+    "ai_provider" : "github",
+    "ai_config" : {
+        "github" : {
+            "api_base" : "http://localhost:4141",
+            "model" : "claude-sonnet-4"
+        },
+        "claude-code" : {
+            "api_base" : "https://api.anthropic.com",
+            "api_key" : "your_anthropic_api_key_here",
+            "model" : "claude-sonnet-4"
+        }
+    },
+    "minimum_confidence_score" : 100,
+    "auto_merge_environments" : ["development"],
+    "metrics_pushgateway_url" : "http://prometheus-stack-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
+    "embeddings" : {
+        "enabled" : false,
+        "s3_bucket" : "automerge-embeddings-bucket",
+        "aws_region" : "eu-west-1",
+        "similarity_boost_weight" : 0.5,
+        "max_cached_prs" : 100,
+        "force_recalculate" : false
+    },
+    "test_prs" : [
+        {
+            "repo" : "terraform-ops",
+            "pr_number" : 23680
+        }
     ]
 }

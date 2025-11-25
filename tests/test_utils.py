@@ -34,7 +34,7 @@ from utils import (  # noqa: E402
     COMMENT_IGNORE_AUTOMERGE,
     COMMENT_CLOSE_NEW_VERSION,
     COMMENT_NO_PROJECT,
-    MERGE_METHOD_SQUASH
+    MERGE_METHOD_SQUASH,
 )
 
 
@@ -87,12 +87,17 @@ class TestConstants(unittest.TestCase):
         """Test comment constants are properly defined."""
         self.assertEqual(COMMENT_ATLANTIS_PLAN, "atlantis plan")
         self.assertEqual(COMMENT_ATLANTIS_UNLOCK, "atlantis unlock")
-        self.assertEqual(COMMENT_IGNORE_AUTOMERGE,
-                         "This PR will be ignored by automerge")
-        self.assertEqual(COMMENT_CLOSE_NEW_VERSION,
-                         "This PR will be closed since there is a new version of this dependency")
         self.assertEqual(
-            COMMENT_NO_PROJECT, "Will be ignored, 0 projects planned, usually due to modules update or no file changed, check and close them yourself please")
+            COMMENT_IGNORE_AUTOMERGE, "This PR will be ignored by automerge"
+        )
+        self.assertEqual(
+            COMMENT_CLOSE_NEW_VERSION,
+            "This PR will be closed since there is a new version of this dependency",
+        )
+        self.assertEqual(
+            COMMENT_NO_PROJECT,
+            "Will be ignored, 0 projects planned, usually due to modules update or no file changed, check and close them yourself please",
+        )
 
     def test_merge_method_constants(self):
         """Test merge method constants are properly defined."""
@@ -104,14 +109,7 @@ class TestFormatPrInfo(unittest.TestCase):
 
     def test_format_pr_info_standard(self):
         """Test formatting PR info with standard data."""
-        pr = {
-            "number": 123,
-            "head": {
-                "repo": {
-                    "name": "test-repo"
-                }
-            }
-        }
+        pr = {"number": 123, "head": {"repo": {"name": "test-repo"}}}
 
         result = format_pr_info(pr)
         expected = "PR 123 in repo test-repo"
@@ -122,19 +120,12 @@ class TestFormatPrInfo(unittest.TestCase):
         test_cases = [
             (1, "test-repo", "PR 1 in repo test-repo"),
             (999, "another-repo", "PR 999 in repo another-repo"),
-            (12345, "long-repo-name", "PR 12345 in repo long-repo-name")
+            (12345, "long-repo-name", "PR 12345 in repo long-repo-name"),
         ]
 
         for pr_number, repo_name, expected in test_cases:
             with self.subTest(pr_number=pr_number, repo_name=repo_name):
-                pr = {
-                    "number": pr_number,
-                    "head": {
-                        "repo": {
-                            "name": repo_name
-                        }
-                    }
-                }
+                pr = {"number": pr_number, "head": {"repo": {"name": repo_name}}}
                 result = format_pr_info(pr)
                 self.assertEqual(result, expected)
 
@@ -142,11 +133,7 @@ class TestFormatPrInfo(unittest.TestCase):
         """Test formatting PR info with special characters in repo name."""
         pr = {
             "number": 456,
-            "head": {
-                "repo": {
-                    "name": "repo-with-hyphens_and_underscores.dots"
-                }
-            }
+            "head": {"repo": {"name": "repo-with-hyphens_and_underscores.dots"}},
         }
 
         result = format_pr_info(pr)
@@ -155,14 +142,7 @@ class TestFormatPrInfo(unittest.TestCase):
 
     def test_format_pr_info_unicode(self):
         """Test formatting PR info with unicode characters."""
-        pr = {
-            "number": 789,
-            "head": {
-                "repo": {
-                    "name": "repo-with-unicode-🚀-chars"
-                }
-            }
-        }
+        pr = {"number": 789, "head": {"repo": {"name": "repo-with-unicode-🚀-chars"}}}
 
         result = format_pr_info(pr)
         expected = "PR 789 in repo repo-with-unicode-🚀-chars"
@@ -185,9 +165,12 @@ class TestFormatApiError(unittest.TestCase):
             (400, "Bad Request", "Status code: 400 \n Reason: Bad Request"),
             (401, "Unauthorized", "Status code: 401 \n Reason: Unauthorized"),
             (403, "Forbidden", "Status code: 403 \n Reason: Forbidden"),
-            (500, "Internal Server Error",
-             "Status code: 500 \n Reason: Internal Server Error"),
-            (502, "Bad Gateway", "Status code: 502 \n Reason: Bad Gateway")
+            (
+                500,
+                "Internal Server Error",
+                "Status code: 500 \n Reason: Internal Server Error",
+            ),
+            (502, "Bad Gateway", "Status code: 502 \n Reason: Bad Gateway"),
         ]
 
         for status_code, reason, expected in test_cases:
@@ -197,7 +180,9 @@ class TestFormatApiError(unittest.TestCase):
 
     def test_format_api_error_json_response(self):
         """Test formatting API error with JSON response text."""
-        json_response = '{"message": "Not Found", "documentation_url": "https://docs.github.com"}'
+        json_response = (
+            '{"message": "Not Found", "documentation_url": "https://docs.github.com"}'
+        )
         result = format_api_error(404, json_response)
         expected = f"Status code: 404 \n Reason: {json_response}"
         self.assertEqual(result, expected)
@@ -339,14 +324,7 @@ class TestFunctionReturnTypes(unittest.TestCase):
 
     def test_format_pr_info_returns_string(self):
         """Test that format_pr_info returns a string."""
-        pr = {
-            "number": 123,
-            "head": {
-                "repo": {
-                    "name": "test-repo"
-                }
-            }
-        }
+        pr = {"number": 123, "head": {"repo": {"name": "test-repo"}}}
         result = format_pr_info(pr)
         self.assertIsInstance(result, str)
 
@@ -390,26 +368,12 @@ class TestEdgeCases(unittest.TestCase):
     def test_format_pr_info_wrong_types(self):
         """Test format_pr_info with wrong data types."""
         # Number as string (should still work due to f-string formatting)
-        pr = {
-            "number": "123",
-            "head": {
-                "repo": {
-                    "name": "test-repo"
-                }
-            }
-        }
+        pr = {"number": "123", "head": {"repo": {"name": "test-repo"}}}
         result = format_pr_info(pr)
         self.assertEqual(result, "PR 123 in repo test-repo")
 
         # Name as number (should still work due to f-string formatting)
-        pr = {
-            "number": 123,
-            "head": {
-                "repo": {
-                    "name": 456
-                }
-            }
-        }
+        pr = {"number": 123, "head": {"repo": {"name": 456}}}
         result = format_pr_info(pr)
         self.assertEqual(result, "PR 123 in repo 456")
 

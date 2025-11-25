@@ -13,7 +13,7 @@ from utils import (  # noqa: E402
     DEFAULT_TIMEOUT,
     MERGEABLE_STATE_TIMEOUT,
     GITHUB_API_VERSION,
-    GITHUB_ACCEPT_HEADER
+    GITHUB_ACCEPT_HEADER,
 )
 
 
@@ -46,8 +46,7 @@ class TestGitHubClientInit(unittest.TestCase):
         self.assertEqual(client.access_token, "token123")
         self.assertEqual(client.owner, "owner")
         self.assertEqual(client.github_user, "user")
-        self.assertEqual(client.base_repos_url,
-                         "https://api.github.com/repos/owner/")
+        self.assertEqual(client.base_repos_url, "https://api.github.com/repos/owner/")
 
         # Check headers
         expected_headers = {
@@ -66,15 +65,14 @@ class TestGitHubClientInit(unittest.TestCase):
             ("ghp_token123", "ghp_token123"),
             ("github_pat_token", "github_pat_token"),
             ("", ""),
-            ("token with spaces", "token with spaces")
+            ("token with spaces", "token with spaces"),
         ]
 
         for token, expected in test_cases:
             with self.subTest(token=token):
                 client = GitHubClient(token, "owner", "user")
                 self.assertEqual(client.access_token, expected)
-                self.assertEqual(
-                    client.headers["Authorization"], f"Bearer {expected}")
+                self.assertEqual(client.headers["Authorization"], f"Bearer {expected}")
 
 
 class TestGetPullRequests(unittest.TestCase):
@@ -90,15 +88,21 @@ class TestGetPullRequests(unittest.TestCase):
     def test_get_pull_requests_success(self, mock_print, mock_get):
         """Test successful pull request retrieval."""
         mock_get.side_effect = [
-            MockResponse([
-                {"title": "[DEPENDENCIES] Update lib", "number": 1},
-                {"title": "Other PR", "number": 2},
-                {"title": "[Dependabot] Bump version", "number": 3}
-            ], 200),
-            MockResponse([
-                {"title": "[DEPENDENCIES] Update another", "number": 4},
-                {"title": "Manual PR", "number": 5}
-            ], 200)
+            MockResponse(
+                [
+                    {"title": "[DEPENDENCIES] Update lib", "number": 1},
+                    {"title": "Other PR", "number": 2},
+                    {"title": "[Dependabot] Bump version", "number": 3},
+                ],
+                200,
+            ),
+            MockResponse(
+                [
+                    {"title": "[DEPENDENCIES] Update another", "number": 4},
+                    {"title": "Manual PR", "number": 5},
+                ],
+                200,
+            ),
         ]
 
         result = self.client.get_pull_requests(self.repos, self.filters)
@@ -113,23 +117,30 @@ class TestGetPullRequests(unittest.TestCase):
 
         # Verify API calls
         expected_calls = [
-            call("https://api.github.com/repos/owner/repo1/pulls?per_page=100",
-                 headers=self.client.headers, timeout=DEFAULT_TIMEOUT),
-            call("https://api.github.com/repos/owner/repo2/pulls?per_page=100",
-                 headers=self.client.headers, timeout=DEFAULT_TIMEOUT)
+            call(
+                "https://api.github.com/repos/owner/repo1/pulls?per_page=100",
+                headers=self.client.headers,
+                timeout=DEFAULT_TIMEOUT,
+            ),
+            call(
+                "https://api.github.com/repos/owner/repo2/pulls?per_page=100",
+                headers=self.client.headers,
+                timeout=DEFAULT_TIMEOUT,
+            ),
         ]
         mock_get.assert_has_calls(expected_calls)
 
     @patch("requests.get")
-    @patch("builtins.print")
-    def test_get_pull_requests_no_filters(self, mock_print, mock_get):
+    @patch("github_client.logger.error")
+    def test_get_pull_requests_no_filters(self, mock_logger, mock_get):
         """Test get_pull_requests with no filters."""
         with self.assertRaises(SystemExit) as context:
             self.client.get_pull_requests(self.repos, [])
 
         self.assertEqual(context.exception.code, 1)
-        mock_print.assert_called_with(
-            "No filters to match, please provide at least one, exiting")
+        mock_logger.assert_called_with(
+            "No filters to match, please provide at least one, exiting"
+        )
 
     @patch("requests.get")
     @patch("builtins.print")
@@ -146,8 +157,7 @@ class TestGetPullRequests(unittest.TestCase):
     @patch("builtins.print")
     def test_get_pull_requests_network_error(self, mock_print, mock_get):
         """Test get_pull_requests with network error."""
-        mock_get.side_effect = requests.exceptions.ConnectionError(
-            "Network error")
+        mock_get.side_effect = requests.exceptions.ConnectionError("Network error")
 
         with self.assertRaises(requests.exceptions.ConnectionError):
             self.client.get_pull_requests(self.repos, self.filters)
@@ -156,10 +166,7 @@ class TestGetPullRequests(unittest.TestCase):
     @patch("builtins.print")
     def test_get_pull_requests_empty_response(self, mock_print, mock_get):
         """Test get_pull_requests with empty response."""
-        mock_get.side_effect = [
-            MockResponse([], 200),
-            MockResponse([], 200)
-        ]
+        mock_get.side_effect = [MockResponse([], 200), MockResponse([], 200)]
 
         result = self.client.get_pull_requests(self.repos, self.filters)
         self.assertEqual(len(result), 0)
@@ -171,16 +178,19 @@ class TestGetPullRequests(unittest.TestCase):
         complex_filters = [
             "^\\[DEPENDENCIES\\]\\s+Update\\s+\\w+",
             "^\\[Dependabot\\].*bump.*version",
-            "^Renovate.*"
+            "^Renovate.*",
         ]
 
-        mock_get.return_value = MockResponse([
-            {"title": "[DEPENDENCIES] Update terraform", "number": 1},
-            {"title": "[Dependabot] bump package version", "number": 2},
-            {"title": "Renovate: Update dependencies", "number": 3},
-            {"title": "[DEPENDENCIES]Update without space", "number": 4},
-            {"title": "[Dependabot] different format", "number": 5}
-        ], 200)
+        mock_get.return_value = MockResponse(
+            [
+                {"title": "[DEPENDENCIES] Update terraform", "number": 1},
+                {"title": "[Dependabot] bump package version", "number": 2},
+                {"title": "Renovate: Update dependencies", "number": 3},
+                {"title": "[DEPENDENCIES]Update without space", "number": 4},
+                {"title": "[Dependabot] different format", "number": 5},
+            ],
+            200,
+        )
 
         result = self.client.get_pull_requests(["repo1"], complex_filters)
 
@@ -200,7 +210,7 @@ class TestUpdateBranch(unittest.TestCase):
         self.pull_req = {
             "url": "https://api.github.com/repos/owner/repo/pulls/123",
             "number": 123,
-            "head": {"repo": {"name": "test-repo"}}
+            "head": {"repo": {"name": "test-repo"}},
         }
 
     @patch("requests.put")
@@ -214,7 +224,7 @@ class TestUpdateBranch(unittest.TestCase):
         mock_put.assert_called_once_with(
             "https://api.github.com/repos/owner/repo/pulls/123/update-branch",
             headers=self.client.headers,
-            timeout=DEFAULT_TIMEOUT
+            timeout=DEFAULT_TIMEOUT,
         )
 
     @patch("requests.put")
@@ -232,8 +242,11 @@ class TestUpdateBranch(unittest.TestCase):
     @patch("builtins.print")
     def test_update_branch_multiple_prs(self, mock_print, mock_put):
         """Test updating multiple PRs."""
-        pr2 = {**self.pull_req, "number": 124,
-               "url": "https://api.github.com/repos/owner/repo/pulls/124"}
+        pr2 = {
+            **self.pull_req,
+            "number": 124,
+            "url": "https://api.github.com/repos/owner/repo/pulls/124",
+        }
 
         mock_put.return_value = MockResponse({"message": "Updated"}, 202)
 
@@ -264,7 +277,7 @@ class TestGetLastComment(unittest.TestCase):
         comments = [
             {"id": 1, "body": "First comment"},
             {"id": 2, "body": "Second comment"},
-            {"id": 3, "body": "Last comment"}
+            {"id": 3, "body": "Last comment"},
         ]
         mock_get.return_value = MockResponse(comments, 200)
 
@@ -296,14 +309,19 @@ class TestGetLastComment(unittest.TestCase):
         first_response = MockResponse(
             [{"id": 1, "body": "First comment"}],
             200,
-            {"Link": '<https://api.github.com/repos/owner/repo/issues/123/comments?page=2>; rel="last"'}
+            {
+                "Link": '<https://api.github.com/repos/owner/repo/issues/123/comments?page=2>; rel="last"'
+            },
         )
 
         # Last page request
-        last_response = MockResponse([
-            {"id": 50, "body": "Comment on last page"},
-            {"id": 51, "body": "Very last comment"}
-        ], 200)
+        last_response = MockResponse(
+            [
+                {"id": 50, "body": "Comment on last page"},
+                {"id": 51, "body": "Very last comment"},
+            ],
+            200,
+        )
 
         mock_get.side_effect = [first_response, last_response]
 
@@ -319,12 +337,14 @@ class TestGetLastComment(unittest.TestCase):
         first_response = MockResponse(
             [{"id": 1, "body": "First comment"}],
             200,
-            {"Link": '<https://api.github.com/repos/owner/repo/issues/123/comments?page=2>; rel="last"'}
+            {
+                "Link": '<https://api.github.com/repos/owner/repo/issues/123/comments?page=2>; rel="last"'
+            },
         )
 
         mock_get.side_effect = [
             first_response,
-            MockResponse({"message": "Server Error"}, 500)
+            MockResponse({"message": "Server Error"}, 500),
         ]
 
         result = self.client.get_last_comment(self.pr_url)
@@ -335,8 +355,7 @@ class TestGetLastComment(unittest.TestCase):
     @patch("requests.get")
     def test_get_last_comment_network_error(self, mock_get):
         """Test get_last_comment with network error."""
-        mock_get.side_effect = requests.exceptions.ConnectionError(
-            "Network error")
+        mock_get.side_effect = requests.exceptions.ConnectionError("Network error")
 
         with self.assertRaises(requests.exceptions.ConnectionError):
             self.client.get_last_comment(self.pr_url)
@@ -357,8 +376,7 @@ class TestGetMergeableState(unittest.TestCase):
 
         for state in states:
             with self.subTest(state=state):
-                mock_get.return_value = MockResponse(
-                    {"mergeable_state": state}, 200)
+                mock_get.return_value = MockResponse({"mergeable_state": state}, 200)
 
                 result = self.client.get_mergeable_state(self.pr_url)
                 self.assertEqual(result, state)
@@ -408,7 +426,7 @@ class TestIsApproved(unittest.TestCase):
         """Test is_approved returns True for approved PR."""
         reviews = [
             {"id": 1, "user": {"login": "other_user"}, "state": "COMMENTED"},
-            {"id": 2, "user": {"login": "test_user"}, "state": "APPROVED"}
+            {"id": 2, "user": {"login": "test_user"}, "state": "APPROVED"},
         ]
         mock_get.return_value = MockResponse(reviews, 200)
 
@@ -431,9 +449,7 @@ class TestIsApproved(unittest.TestCase):
     @patch("builtins.print")
     def test_is_approved_dismissed(self, mock_print, mock_get):
         """Test is_approved returns 'Dismissed' for dismissed review."""
-        reviews = [
-            {"id": 1, "user": {"login": "test_user"}, "state": "DISMISSED"}
-        ]
+        reviews = [{"id": 1, "user": {"login": "test_user"}, "state": "DISMISSED"}]
         mock_get.return_value = MockResponse(reviews, 200)
 
         result = self.client.is_approved(self.pr_url)
@@ -443,9 +459,7 @@ class TestIsApproved(unittest.TestCase):
     @patch("builtins.print")
     def test_is_approved_no_reviews(self, mock_print, mock_get):
         """Test is_approved returns None when no reviews from user."""
-        reviews = [
-            {"id": 1, "user": {"login": "other_user"}, "state": "APPROVED"}
-        ]
+        reviews = [{"id": 1, "user": {"login": "other_user"}, "state": "APPROVED"}]
         mock_get.return_value = MockResponse(reviews, 200)
 
         result = self.client.is_approved(self.pr_url)
@@ -476,7 +490,7 @@ class TestIsApproved(unittest.TestCase):
         reviews = [
             {"id": 1, "user": {"login": "test_user"}, "state": "APPROVED"},
             {"id": 2, "user": {"login": "test_user"}, "state": "CHANGES_REQUESTED"},
-            {"id": 3, "user": {"login": "test_user"}, "state": "APPROVED"}
+            {"id": 3, "user": {"login": "test_user"}, "state": "APPROVED"},
         ]
         mock_get.return_value = MockResponse(reviews, 200)
 
@@ -493,8 +507,8 @@ class TestApprove(unittest.TestCase):
         self.pr_url = "https://api.github.com/repos/owner/repo/pulls/123"
 
     @patch("requests.post")
-    @patch("builtins.print")
-    def test_approve_success(self, mock_print, mock_post):
+    @patch("github_client.logger.info")
+    def test_approve_success(self, mock_logger, mock_post):
         """Test successful PR approval."""
         mock_post.return_value = MockResponse({"id": 123}, 200)
 
@@ -504,13 +518,13 @@ class TestApprove(unittest.TestCase):
             self.pr_url + "/reviews",
             headers=self.client.headers,
             json={"event": "APPROVE"},
-            timeout=DEFAULT_TIMEOUT
+            timeout=DEFAULT_TIMEOUT,
         )
-        mock_print.assert_called_with("PR Approved")
+        mock_logger.assert_called_with("PR Approved")
 
     @patch("requests.post")
-    @patch("builtins.print")
-    def test_approve_api_error(self, mock_print, mock_post):
+    @patch("github_client.logger.info")
+    def test_approve_api_error(self, mock_logger, mock_post):
         """Test approve with API error."""
         mock_post.return_value = MockResponse({"message": "Forbidden"}, 403)
 
@@ -523,8 +537,7 @@ class TestApprove(unittest.TestCase):
     @patch("builtins.print")
     def test_approve_network_error(self, mock_print, mock_post):
         """Test approve with network error."""
-        mock_post.side_effect = requests.exceptions.ConnectionError(
-            "Network error")
+        mock_post.side_effect = requests.exceptions.ConnectionError("Network error")
 
         # Should raise SystemExit which wraps the ConnectionError
         with self.assertRaises(SystemExit):
@@ -539,7 +552,7 @@ class TestCommentPullReq(unittest.TestCase):
         self.pull_req = {
             "number": 123,
             "url": "https://api.github.com/repos/owner/repo/pulls/123",
-            "comments_url": "https://api.github.com/repos/owner/repo/issues/123/comments"
+            "comments_url": "https://api.github.com/repos/owner/repo/issues/123/comments",
         }
 
     @patch("requests.post")
@@ -548,28 +561,28 @@ class TestCommentPullReq(unittest.TestCase):
         """Test commenting without update."""
         mock_post.return_value = MockResponse({"id": 456}, 201)
 
-        self.client.comment_pull_req(
-            [self.pull_req], "Test comment", update=False)
+        self.client.comment_pull_req([self.pull_req], "Test comment", update=False)
 
         mock_post.assert_called_once_with(
             self.pull_req["comments_url"],
             json={"body": "Test comment"},
             headers=self.client.headers,
-            timeout=DEFAULT_TIMEOUT
+            timeout=DEFAULT_TIMEOUT,
         )
 
     @patch.object(GitHubClient, "get_mergeable_state")
     @patch.object(GitHubClient, "update_branch")
     @patch("requests.post")
     @patch("builtins.print")
-    def test_comment_pull_req_with_update_behind(self, mock_print, mock_post, mock_update, mock_state):
+    def test_comment_pull_req_with_update_behind(
+        self, mock_print, mock_post, mock_update, mock_state
+    ):
         """Test commenting with update when PR is behind."""
         mock_post.return_value = MockResponse({"id": 456}, 201)
         # behind -> blocked after update
         mock_state.side_effect = ["behind", "blocked"]
 
-        self.client.comment_pull_req(
-            [self.pull_req], "Test comment", update=True)
+        self.client.comment_pull_req([self.pull_req], "Test comment", update=True)
 
         mock_update.assert_called_once_with([self.pull_req])
         mock_post.assert_called_once()
@@ -583,11 +596,19 @@ class TestCommentPullReq(unittest.TestCase):
         mock_state.return_value = "unknown"  # Always unknown, will timeout
 
         with patch("time.time") as mock_time:
-            # Simulate timeout
-            mock_time.side_effect = [0, MERGEABLE_STATE_TIMEOUT + 1]
+            # Use a function that returns incrementing values to avoid StopIteration
+            call_count = [0]
 
-            self.client.comment_pull_req(
-                [self.pull_req], "Test comment", update=True)
+            def time_side_effect():
+                call_count[0] += 1
+                if call_count[0] <= 5:
+                    return call_count[0]
+                else:
+                    return MERGEABLE_STATE_TIMEOUT + call_count[0]
+
+            mock_time.side_effect = time_side_effect
+
+            self.client.comment_pull_req([self.pull_req], "Test comment", update=True)
 
         # Should still post comment even after timeout
         mock_post.assert_not_called()  # Skip PR due to timeout
@@ -599,8 +620,7 @@ class TestCommentPullReq(unittest.TestCase):
         mock_post.return_value = MockResponse({"message": "Bad Request"}, 400)
 
         # Should not raise exception, just print error
-        self.client.comment_pull_req(
-            [self.pull_req], "Test comment", update=False)
+        self.client.comment_pull_req([self.pull_req], "Test comment", update=False)
 
         mock_post.assert_called_once()
 
@@ -612,7 +632,7 @@ class TestMergePullReq(unittest.TestCase):
         self.client = GitHubClient("token", "owner", "user")
         self.pull_req = {
             "number": 123,
-            "url": "https://api.github.com/repos/owner/repo/pulls/123"
+            "url": "https://api.github.com/repos/owner/repo/pulls/123",
         }
 
     @patch.object(GitHubClient, "get_mergeable_state")
@@ -620,7 +640,9 @@ class TestMergePullReq(unittest.TestCase):
     @patch.object(GitHubClient, "approve")
     @patch("requests.put")
     @patch("builtins.print")
-    def test_merge_pull_req_success(self, mock_print, mock_put, mock_approve_method, mock_is_approved, mock_state):
+    def test_merge_pull_req_success(
+        self, mock_print, mock_put, mock_approve_method, mock_is_approved, mock_state
+    ):
         """Test successful PR merge."""
         mock_state.side_effect = ["clean", "clean"]  # Ready to merge
         mock_is_approved.return_value = True
@@ -632,7 +654,7 @@ class TestMergePullReq(unittest.TestCase):
             self.pull_req["url"] + "/merge",
             headers=self.client.headers,
             json={"merge_method": "squash"},
-            timeout=DEFAULT_TIMEOUT
+            timeout=DEFAULT_TIMEOUT,
         )
         mock_approve_method.assert_not_called()  # Already approved
 
@@ -642,11 +664,17 @@ class TestMergePullReq(unittest.TestCase):
     @patch.object(GitHubClient, "update_branch")
     @patch("requests.put")
     @patch("builtins.print")
-    def test_merge_pull_req_needs_approval_and_update(self, mock_print, mock_put, mock_update,
-                                                      mock_approve_method, mock_is_approved, mock_state):
+    def test_merge_pull_req_needs_approval_and_update(
+        self,
+        mock_print,
+        mock_put,
+        mock_update,
+        mock_approve_method,
+        mock_is_approved,
+        mock_state,
+    ):
         """Test merge when PR needs approval and branch update."""
-        mock_state.side_effect = [
-            "behind", "clean"]  # Behind -> clean after update
+        mock_state.side_effect = ["behind", "clean"]  # Behind -> clean after update
         mock_is_approved.return_value = False
         mock_put.return_value = MockResponse({"merged": True}, 200)
 
@@ -664,7 +692,17 @@ class TestMergePullReq(unittest.TestCase):
         mock_state.return_value = "unknown"  # Always unknown
 
         with patch("time.time") as mock_time:
-            mock_time.side_effect = [0, MERGEABLE_STATE_TIMEOUT + 1]
+            # Use a function that returns incrementing values to avoid StopIteration
+            call_count = [0]
+
+            def time_side_effect():
+                call_count[0] += 1
+                if call_count[0] <= 5:
+                    return call_count[0]
+                else:
+                    return MERGEABLE_STATE_TIMEOUT + call_count[0]
+
+            mock_time.side_effect = time_side_effect
 
             self.client.merge_pull_req([self.pull_req])
 
@@ -674,7 +712,9 @@ class TestMergePullReq(unittest.TestCase):
     @patch.object(GitHubClient, "is_approved")
     @patch("requests.put")
     @patch("builtins.print")
-    def test_merge_pull_req_api_error(self, mock_print, mock_put, mock_is_approved, mock_state):
+    def test_merge_pull_req_api_error(
+        self, mock_print, mock_put, mock_is_approved, mock_state
+    ):
         """Test merge with API error."""
         mock_state.return_value = "clean"
         mock_is_approved.return_value = True
@@ -694,17 +734,20 @@ class TestProcessDismissedPrs(unittest.TestCase):
         self.pull_req = {
             "number": 123,
             "url": "https://api.github.com/repos/owner/repo/pulls/123",
-            "issue_url": "https://api.github.com/repos/owner/repo/issues/123"
+            "issue_url": "https://api.github.com/repos/owner/repo/issues/123",
         }
 
     @patch.object(GitHubClient, "merge_pull_req")
     @patch.object(GitHubClient, "approve")
     @patch.object(GitHubClient, "get_last_comment")
     @patch("builtins.print")
-    def test_process_dismissed_prs_no_changes(self, mock_print, mock_comment, mock_approve, mock_merge):
+    def test_process_dismissed_prs_no_changes(
+        self, mock_print, mock_comment, mock_approve, mock_merge
+    ):
         """Test processing dismissed PR with no changes."""
         mock_comment.return_value = {
-            "body": "No changes. Your infrastructure matches the configuration"}
+            "body": "No changes. Your infrastructure matches the configuration"
+        }
 
         self.client.process_dismissed_prs([self.pull_req])
 
@@ -715,12 +758,101 @@ class TestProcessDismissedPrs(unittest.TestCase):
     @patch.object(GitHubClient, "approve")
     @patch.object(GitHubClient, "get_last_comment")
     @patch("builtins.print")
-    def test_process_dismissed_prs_with_changes(self, mock_print, mock_comment, mock_approve, mock_merge):
+    def test_process_dismissed_prs_with_changes(
+        self, mock_print, mock_comment, mock_approve, mock_merge
+    ):
         """Test processing dismissed PR with changes."""
         mock_comment.return_value = {
-            "body": "Plan: 1 to add, 0 to change, 0 to destroy."}
+            "body": "Plan: 1 to add, 0 to change, 0 to destroy."
+        }
 
         self.client.process_dismissed_prs([self.pull_req])
 
         mock_approve.assert_called_once_with(self.pull_req["url"])
         mock_merge.assert_not_called()
+
+
+class TestRepositoryInfo(unittest.TestCase):
+    """Test repository information methods."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.client = GitHubClient("token123", "owner", "user")
+
+    @patch("requests.get")
+    def test_get_repository_info_success(self, mock_get):
+        """Test successful repository info retrieval."""
+        mock_repo_data = {
+            "name": "test-repo",
+            "topics": ["terraform", "automerge_ai_disabled", "infrastructure"],
+        }
+        mock_response = MockResponse(mock_repo_data, 200)
+        mock_get.return_value = mock_response
+
+        result = self.client.get_repository_info("test-repo")
+
+        self.assertEqual(result, mock_repo_data)
+        mock_get.assert_called_once_with(
+            "https://api.github.com/repos/owner/test-repo",
+            headers=self.client.headers,
+            timeout=DEFAULT_TIMEOUT,
+        )
+
+    @patch("requests.get")
+    def test_get_repository_info_failure(self, mock_get):
+        """Test repository info retrieval failure."""
+        mock_response = MockResponse({"message": "Not Found"}, 404)
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(SystemExit):
+            self.client.get_repository_info("nonexistent-repo")
+
+    @patch("requests.get")
+    def test_is_ai_disabled_for_repo_disabled(self, mock_get):
+        """Test AI disabled check when repository has the disable keyword."""
+        mock_repo_data = {
+            "name": "test-repo",
+            "topics": ["terraform", "automerge-ai-disabled", "infrastructure"],
+        }
+        mock_response = MockResponse(mock_repo_data, 200)
+        mock_get.return_value = mock_response
+
+        result = self.client.is_ai_disabled_for_repo("test-repo")
+
+        self.assertTrue(result)
+
+    @patch("requests.get")
+    def test_is_ai_disabled_for_repo_enabled(self, mock_get):
+        """Test AI disabled check when repository doesn't have the disable keyword."""
+        mock_repo_data = {
+            "name": "test-repo",
+            "topics": ["terraform", "infrastructure"],
+        }
+        mock_response = MockResponse(mock_repo_data, 200)
+        mock_get.return_value = mock_response
+
+        result = self.client.is_ai_disabled_for_repo("test-repo")
+
+        self.assertFalse(result)
+
+    @patch("requests.get")
+    def test_is_ai_disabled_for_repo_no_topics(self, mock_get):
+        """Test AI disabled check when repository has no topics."""
+        mock_repo_data = {"name": "test-repo", "topics": []}
+        mock_response = MockResponse(mock_repo_data, 200)
+        mock_get.return_value = mock_response
+
+        result = self.client.is_ai_disabled_for_repo("test-repo")
+
+        self.assertFalse(result)
+
+    @patch("requests.get")
+    def test_is_ai_disabled_for_repo_error(self, mock_get):
+        """Test AI disabled check when repository info retrieval fails."""
+        mock_response = MockResponse({"message": "Not Found"}, 404)
+        mock_get.return_value = mock_response
+
+        result = self.client.is_ai_disabled_for_repo("nonexistent-repo")
+
+        # Should return False (enabled) when there's an error
+        self.assertFalse(result)

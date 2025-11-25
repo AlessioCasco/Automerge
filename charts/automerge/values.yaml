@@ -20,13 +20,18 @@ job:
     vault.hashicorp.com/agent-inject: "true"
     vault.hashicorp.com/agent-pre-populate-only : "true"
     vault.hashicorp.com/role: k8s-tools-automerge
-    vault.hashicorp.com/agent-inject-secret-config.json: development-eu-west-1/tools/secret/automerge/config
+    vault.hashicorp.com/agent-inject-secret-config.json: development-eu-west-1/tools/secret/automerge/aiconfig
     vault.hashicorp.com/agent-inject-template-config.json: |
-      {{- with secret "development-eu-west-1/tools/secret/automerge/config" -}}
+      {{- with secret "development-eu-west-1/tools/secret/automerge/aiconfig" -}}
       {{ .Data.data | toJSON  }}
       {{- end }}
-  args: ["--config", "/vault/secrets/config.json"]
-  # args: ["--config", "/app/config/config.json"]
+  args: ["--config", "/vault/secrets/aiconfig.json"]
+  # args: ["--config", "/app/config/aiconfig.json"]
+  # env:
+  #   - name: ENABLE_AI_CONFIDENCE_SCORE
+  #     value: "false"
+  #   - name: ENABLE_AI_AUTOMERGE_ACTION
+  #     value: "false"
   resources:
     requests:
       memory: "64Mi"

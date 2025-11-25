@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 
 import json
+import logging
 import re
 import time
 from typing import Dict, List, Optional, Any, Union
 
 import requests
 from rich.console import Console
+
+# Set up logger
+logger = logging.getLogger(__name__)
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 try:
     from .utils import (
@@ -46,7 +53,9 @@ class GitHubClient:
         self.base_repos_url = f"https://api.github.com/repos/{owner}/"
         self.console = Console()
 
-    def get_pull_requests(self, repos: List[str], filters: List[str]) -> List[Dict[str, Any]]:
+    def get_pull_requests(
+        self, repos: List[str], filters: List[str]
+    ) -> List[Dict[str, Any]]:
         """Get all pull requests that match the filter in the title.
 
         Args:
@@ -63,19 +72,21 @@ class GitHubClient:
 
         # Check that we have at least one filter
         if not filters:
-            print("No filters to match, please provide at least one, exiting")
+            logger.error("No filters to match, please provide at least one, exiting")
             raise SystemExit(1)
 
         for repo in repos:
             pr_url = self.base_repos_url + repo + "/pulls?per_page=100"
 
-            print(f"Fetching all PR's from {repo}")
+            logger.info(f"Fetching all PR's from {repo}")
 
             response = requests.get(
-                pr_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+                pr_url, headers=self.headers, timeout=DEFAULT_TIMEOUT
+            )
             if response.status_code != 200:
-                print(
-                    f"Failed to get pull request. \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(
+                    f"Failed to get pull request. \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}"
+                )
                 raise SystemExit(1)
 
             pull_requests = json.loads(response.text)
@@ -86,8 +97,148 @@ class GitHubClient:
                     if re.match(filter_pattern, pr["title"]):
                         dependency_prs.append(pr)
 
-        print("All pull requests fetched\n")
+        logger.info("All pull requests fetched")
         return dependency_prs
+
+    def get_specific_pull_requests(
+        self, test_prs: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Get specific pull requests for testing purposes.
+
+        Args:
+            test_prs: List of test PR configurations with repo and pr_number
+
+        Returns:
+            List of pull requests that match the test configuration
+
+        Raises:
+            SystemExit: If API call fails
+        """
+        specific_prs = []
+
+        for test_pr in test_prs:
+            repo = test_pr["repo"]
+            pr_number = test_pr["pr_number"]
+
+            pr_url = f"{self.base_repos_url}{repo}/pulls/{pr_number}"
+            logger.info(f"Fetching specific PR #{pr_number} from {repo}")
+
+            response = requests.get(
+                pr_url, headers=self.headers, timeout=DEFAULT_TIMEOUT
+            )
+
+            if response.status_code == 200:
+                pr_data = json.loads(response.text)
+                specific_prs.append(pr_data)
+                logger.info(f"Successfully fetched PR #{pr_number} from {repo}")
+            elif response.status_code == 404:
+                logger.warning(f"PR #{pr_number} not found in {repo}, skipping...")
+            else:
+                logger.error(
+                    f"Failed to get PR #{pr_number} from {repo}. \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}"
+                )
+                raise SystemExit(1)
+
+        logger.info(f"Fetched {len(specific_prs)} specific pull requests")
+        return specific_prs
+
+    def get_prs_with_label(
+        self, repo: str, label: str, limit: int = 10, state: str = "all"
+    ) -> List[Dict[str, Any]]:
+        """Get pull requests with a specific label.
+
+        Args:
+            repo: Repository name
+            label: Label to filter by
+            limit: Maximum number of PRs to return (default: 10)
+            state: PR state filter - "open", "closed", or "all" (default: "all")
+
+        Returns:
+            List of pull requests with the specified label
+        """
+        prs_with_label = []
+
+        try:
+            # Use GitHub Issues API to search for PRs with label
+            # PRs are a special case of issues in GitHub API
+            search_url = f"{self.base_repos_url}{repo}/issues"
+
+            params = {
+                "labels": label,
+                "state": state,
+                "per_page": min(limit, 100),  # GitHub API max is 100
+                "sort": "updated",
+                "direction": "desc",
+                "page": 1,
+            }
+
+            logger.debug(
+                f"Fetching PRs with label '{label}' from {repo} (limit: {limit})"
+            )
+
+            # Handle pagination when limit > 100
+            while len(prs_with_label) < limit:
+                response = requests.get(
+                    search_url,
+                    headers=self.headers,
+                    params=params,
+                    timeout=DEFAULT_TIMEOUT,
+                )
+
+                if response.status_code != 200:
+                    logger.warning(
+                        f"Failed to fetch PRs with label '{label}' from {repo}. Status: {response.status_code}"
+                    )
+                    break
+
+                issues = json.loads(response.text)
+
+                # If no more issues, we're done
+                if not issues:
+                    logger.debug(
+                        f"No more issues found on page {params['page']}, stopping pagination"
+                    )
+                    break
+
+                # Filter to only include pull requests (issues with pull_request field)
+                for issue in issues:
+                    if "pull_request" in issue:
+                        # Fetch full PR data
+                        pr_url = issue["pull_request"]["url"]
+                        pr_response = requests.get(
+                            pr_url, headers=self.headers, timeout=DEFAULT_TIMEOUT
+                        )
+
+                        if pr_response.status_code == 200:
+                            pr_data = json.loads(pr_response.text)
+                            prs_with_label.append(pr_data)
+
+                            if len(prs_with_label) >= limit:
+                                break
+
+                # If we got fewer results than per_page, there are no more pages
+                if len(issues) < params["per_page"]:
+                    logger.debug(
+                        f"Received {len(issues)} issues (less than per_page={params['per_page']}), stopping pagination"
+                    )
+                    break
+
+                # If we've reached the limit, stop
+                if len(prs_with_label) >= limit:
+                    break
+
+                # Move to next page
+                params["page"] += 1
+                logger.debug(f"Moving to page {params['page']}")
+
+            logger.info(
+                f"Found {len(prs_with_label)} PRs with label '{label}' in {repo}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error fetching PRs with label '{label}' from {repo}: {e}")
+
+        return prs_with_label
 
     def update_branch(self, pull_req_list: List[Dict[str, Any]]) -> None:
         """Update a branch.
@@ -100,14 +251,51 @@ class GitHubClient:
         """
         for pull_req in pull_req_list:
             update_url = pull_req["url"] + "/update-branch"
-            print(f"Updating PR Number: {pull_req['number']} in repo {pull_req['head']['repo']['name']}")
+            logger.info(
+                f"Updating PR Number: {pull_req['number']} in repo {pull_req['head']['repo']['name']}"
+            )
 
             response = requests.put(
-                update_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+                update_url, headers=self.headers, timeout=DEFAULT_TIMEOUT
+            )
             if response.status_code != 202:
-                print(
-                    f"Failed to update branch in pull request {pull_req['number']} in repo {pull_req['head']['repo']['name']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(
+                    f"Failed to update branch in pull request {pull_req['number']} in repo {pull_req['head']['repo']['name']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}"
+                )
                 raise SystemExit(1)
+
+    def get_comments(self, pull_req_url: str) -> List[Dict[str, Any]]:
+        """Get all comments from a given pull request.
+
+        Args:
+            pull_req_url: URL of the pull request
+
+        Returns:
+            List of all comments from the pull request
+        """
+        comments_url = pull_req_url + "/comments?per_page=100"
+        all_comments = []
+
+        while comments_url:
+            response = requests.get(
+                comments_url, headers=self.headers, timeout=DEFAULT_TIMEOUT
+            )
+            if response.status_code != 200:
+                break
+
+            comments = json.loads(response.text)
+            all_comments.extend(comments)
+
+            # Check for pagination
+            comments_url = None
+            if "Link" in response.headers:
+                links = response.headers["Link"].split(", ")
+                for link in links:
+                    if 'rel="next"' in link:
+                        comments_url = link[link.index("<") + 1 : link.index(">")]
+                        break
+
+        return all_comments
 
     def get_last_comment(self, pull_req_url: str) -> Optional[Dict[str, Any]]:
         """Get the last comment from a given pull request.
@@ -120,7 +308,8 @@ class GitHubClient:
         """
         comments_url = pull_req_url + "/comments?per_page=50"
         response = requests.get(
-            comments_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+            comments_url, headers=self.headers, timeout=DEFAULT_TIMEOUT
+        )
         if response.status_code != 200:
             return None
         comments = json.loads(response.text)
@@ -130,18 +319,268 @@ class GitHubClient:
             links = response.headers["Link"].split(", ")
             for link in links:
                 if 'rel="last"' in link:
-                    last_page_url = link[link.index("<") + 1: link.index(">")]
+                    last_page_url = link[link.index("<") + 1 : link.index(">")]
                     last_page_response = requests.get(
-                        last_page_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+                        last_page_url, headers=self.headers, timeout=DEFAULT_TIMEOUT
+                    )
                     if last_page_response.status_code == 200:
-                        last_page_comments = json.loads(
-                            last_page_response.text)
+                        last_page_comments = json.loads(last_page_response.text)
                         if last_page_comments:
                             return last_page_comments[-1]
 
         if comments:
             return comments[-1]
         return None
+
+    def get_last_terraform_plan(
+        self, pull_req_url: str, terraform_user: str = "tl-terraform"
+    ) -> Optional[str]:
+        """Extract Terraform plan from GitHub comments by the terraform user using improved logic.
+
+        Args:
+            pull_req_url: URL of the pull request
+            terraform_user: GitHub username of the terraform user (default: tl-terraform)
+
+        Returns:
+            Complete terraform plan text or None if not found
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        logger.debug(f"🔍 Extracting Terraform plan from comments for {pull_req_url}")
+
+        try:
+            # Get comments from the PR (ordered from newest to oldest)
+            comments = self.get_comments(pull_req_url)
+
+            if not comments:
+                logger.debug("📋 No comments found for PR")
+                return None
+
+            logger.debug(
+                f"📋 Found {len(comments)} comments, searching for Terraform plan"
+            )
+
+            # Look for comments from the terraform user that contain Terraform plans
+            # Process comments from newest to oldest
+            for i, comment in enumerate(comments):
+                user_login = comment.get("user", {}).get("login", "")
+                comment_body = comment.get("body", "")
+
+                if user_login != terraform_user:
+                    continue
+
+                logger.debug(f"📋 Checking comment {i + 1} from {terraform_user}")
+
+                # Check if this is a "Ran Plan for project" comment
+                if comment_body.startswith("Ran Plan for project:"):
+                    logger.debug("📋 Found 'Ran Plan for project' comment")
+
+                    # Check if it has continuation warning
+                    if (
+                        "Warning: Output length greater than max comment size. Continued in next comment."
+                        in comment_body
+                    ):
+                        logger.debug(
+                            "📋 Plan has continuation warning, collecting continuation comments"
+                        )
+                        # Collect continuation comments that come before this one
+                        plan_content = self._collect_plan_with_continuations(
+                            comments, i
+                        )
+                    else:
+                        logger.debug("📋 Single comment plan, extracting directly")
+                        # Single comment plan, extract directly
+                        plan_content = self._extract_plan_from_comment(comment_body)
+
+                    if plan_content:
+                        logger.debug(f"📋 Found Terraform plan from {terraform_user}:")
+                        logger.debug(f"   Plan length: {len(plan_content)} characters")
+                        return plan_content
+
+                # Check if this is a "Continued plan output" comment
+                elif "Continued plan output from previous comment." in comment_body:
+                    logger.debug("📋 Found 'Continued plan output' comment")
+
+                    # Look backwards for the main "Ran Plan for project" comment
+                    plan_content = self._collect_plan_with_continuations(comments, i)
+
+                    if plan_content:
+                        logger.debug(
+                            "📋 Found Terraform plan from continuation comments:"
+                        )
+                        logger.debug(f"   Plan length: {len(plan_content)} characters")
+                        return plan_content
+
+            logger.debug(f"📋 No Terraform plan comments found from {terraform_user}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error extracting Terraform plan: {e}")
+            return None
+
+    def _collect_plan_with_continuations(
+        self, comments: List[Dict[str, Any]], start_index: int
+    ) -> str:
+        """Collect Terraform plan from main comment and its continuations.
+
+        Args:
+            comments: All comments sorted by creation date (newest first)
+            start_index: Index of the main plan comment or continuation comment
+
+        Returns:
+            Combined terraform plan text
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        logger.debug(
+            f"🔗 Collecting plan with continuations starting from index {start_index}"
+        )
+
+        plan_parts = []
+        main_comment_found = False
+
+        # Start from the given index and look backwards (older comments)
+        for i in range(start_index, len(comments)):
+            comment = comments[i]
+            comment_body = comment.get("body", "")
+            created_at = comment.get("created_at", "unknown")
+
+            logger.debug(f"   📋 Processing comment {i + 1} from {created_at}")
+
+            # Check if this is the main "Ran Plan for project" comment
+            if comment_body.startswith("Ran Plan for project:"):
+                logger.debug("   ✅ Found main 'Ran Plan for project' comment")
+                main_comment_found = True
+
+                # Extract plan from this comment
+                plan_content = self._extract_plan_from_comment(comment_body)
+                if plan_content:
+                    plan_parts.append(plan_content)
+                    logger.debug(
+                        f"   📋 Extracted {len(plan_content)} characters from main comment"
+                    )
+
+                # Stop here - we found the main comment
+                break
+
+            # Check if this is a continuation comment
+            elif "Continued plan output from previous comment." in comment_body:
+                logger.debug("   📋 Found continuation comment")
+
+                # Extract continuation content (remove the header)
+                continuation_content = comment_body.replace(
+                    "Continued plan output from previous comment.", ""
+                ).strip()
+                if continuation_content:
+                    plan_parts.append(continuation_content)
+                    logger.debug(
+                        f"   📋 Extracted {len(continuation_content)} characters from continuation"
+                    )
+            else:
+                # If we find a non-continuation comment and haven't found main comment yet,
+                # this means we're looking at the wrong set of comments
+                logger.debug("   🛑 Found non-plan comment, stopping search")
+                break
+
+        if not main_comment_found:
+            logger.debug("   ❌ Main 'Ran Plan for project' comment not found")
+            return ""
+
+        # Reverse the order to get chronological order (oldest first)
+        plan_parts.reverse()
+
+        # Combine all parts
+        combined_plan = "\n".join(plan_parts)
+        logger.debug(
+            f"🔗 Combined plan from {len(plan_parts)} parts, total length: {len(combined_plan)} characters"
+        )
+
+        return combined_plan
+
+    def _is_terraform_plan_comment(self, comment_body: str) -> bool:
+        """Check if a comment contains a Terraform plan.
+
+        Args:
+            comment_body: The comment body text
+
+        Returns:
+            True if the comment contains a Terraform plan
+        """
+        terraform_indicators = [
+            "Terraform will perform",
+            "Plan:",
+            "No changes",
+            "to add, ",
+            "to change, ",
+            "to destroy",
+            "Changes to Outputs",
+        ]
+
+        comment_lower = comment_body.lower()
+        return any(
+            indicator.lower() in comment_lower for indicator in terraform_indicators
+        )
+
+    def _extract_plan_from_comment(self, comment_body: str) -> str:
+        """Extract Terraform plan content from a comment.
+
+        Args:
+            comment_body: The comment body text
+
+        Returns:
+            Extracted Terraform plan content
+        """
+        import re
+
+        # Pattern 1: Look for code blocks (terraform, hcl, or plain text)
+        code_block_patterns = [
+            r"```terraform\s*\n(.*?)\n```",
+            r"```hcl\s*\n(.*?)\n```",
+            r"```\s*\n(.*?)\n```",
+            r"```(?:terraform|hcl)?\s*\n(.*?)\n```",
+        ]
+
+        for pattern in code_block_patterns:
+            code_matches = re.findall(pattern, comment_body, re.DOTALL)
+            if code_matches:
+                return code_matches[0].strip()
+
+        # Pattern 2: Look for plan content starting with "Plan:" or "Terraform will perform"
+        # This pattern captures everything from the start until the end of the comment
+        plan_patterns = [
+            r"(?:Plan:|Terraform will perform).*",
+            r"Terraform will perform.*",
+            r"Plan:.*",
+        ]
+
+        for pattern in plan_patterns:
+            plan_matches = re.findall(pattern, comment_body, re.DOTALL)
+            if plan_matches:
+                return plan_matches[0].strip()
+
+        # Pattern 3: Look for any content that contains terraform plan indicators
+        # Extract everything between the first terraform indicator and the end
+        terraform_start_patterns = [
+            r"(.*?Terraform will perform.*)",
+            r"(.*?Plan:.*)",
+            r"(.*?No changes.*)",
+            r"(.*?to add,.*to change,.*to destroy.*)",
+        ]
+
+        for pattern in terraform_start_patterns:
+            matches = re.findall(pattern, comment_body, re.DOTALL)
+            if matches:
+                return matches[0].strip()
+
+        # Fallback: return the entire comment if it looks like a plan
+        if self._is_terraform_plan_comment(comment_body):
+            return comment_body.strip()
+
+        return ""
 
     def get_mergeable_state(self, url: str) -> str:
         """Get the mergeable state of the PR.
@@ -153,17 +592,17 @@ class GitHubClient:
             Mergeable state of the pull request
         """
         try:
-            response = requests.get(
-                url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+            response = requests.get(url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
             if response.status_code != 200:
-                print(
-                    f"Failed to get info for pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(
+                    f"Failed to get info for pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}"
+                )
                 return "unknown"
 
             data = json.loads(response.text)
             return data.get("mergeable_state", "unknown")
         except (requests.exceptions.RequestException, ValueError, KeyError) as e:
-            print(f"Error getting mergeable state: {e}")
+            logger.error(f"Error getting mergeable state: {e}")
             return "unknown"
 
     def is_approved(self, url: str) -> Optional[Union[bool, str]]:
@@ -176,10 +615,12 @@ class GitHubClient:
             True if approved, False if not approved, None if no review found, "Dismissed" if dismissed
         """
         response = requests.get(
-            url + "/reviews", headers=self.headers, timeout=DEFAULT_TIMEOUT)
+            url + "/reviews", headers=self.headers, timeout=DEFAULT_TIMEOUT
+        )
         if response.status_code != 200:
-            print(
-                f"Failed to get check if pull request is approved \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+            logger.error(
+                f"Failed to get check if pull request is approved \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}"
+            )
             return None
 
         reviews = json.loads(response.text)
@@ -222,12 +663,13 @@ class GitHubClient:
             )
 
             if response.status_code != 200:
-                print(
-                    f"Failed to approve pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(
+                    f"Failed to approve pull request \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}"
+                )
                 raise SystemExit(1)
-            print("PR Approved")
+            logger.info("PR Approved")
         except requests.exceptions.RequestException as e:
-            print(f"Network error approving pull request: {e}")
+            logger.error(f"Network error approving pull request: {e}")
             raise SystemExit(1) from e
 
     def comment_pull_req(
@@ -253,55 +695,65 @@ class GitHubClient:
 
             if update:
                 mergeable_state = self.get_mergeable_state(pr["url"])
-                print(f"\n*** PR {pr['number']} ***\n")
+                logger.info(f"*** PR {pr['number']} ***")
 
                 # Setting a timer for the mergeable state
                 timeout = time.time() + MERGEABLE_STATE_TIMEOUT
-                with self.console.status("[bold green]Waiting for mergeable state to return..."):
+                with self.console.status(
+                    "[bold green]Waiting for mergeable state to return..."
+                ):
                     while mergeable_state == "unknown":
                         mergeable_state = self.get_mergeable_state(pr["url"])
                         if time.time() > timeout:
                             skip_pr = True
-                            print("Timeout expired, moving on...")
+                            logger.warning("Timeout expired, moving on...")
                             break
                         time.sleep(1)
 
                 if skip_pr:
-                    print(
-                        f"PR {pr['number']}: Timeout expired waiting for state to be green at step 1, skipping")
+                    logger.warning(
+                        f"PR {pr['number']}: Timeout expired waiting for state to be green at step 1, skipping"
+                    )
                     continue
 
                 if mergeable_state == "behind":
-                    print(f"PR {pr['number']} is behind, updating branch")
+                    logger.info(f"PR {pr['number']} is behind, updating branch")
                     self.update_branch([pr])
 
                 # Wait for all checks to pass
-                with self.console.status("[bold green]Waiting for all checks to pass..."):
+                with self.console.status(
+                    "[bold green]Waiting for all checks to pass..."
+                ):
                     while mergeable_state != "blocked":
                         mergeable_state = self.get_mergeable_state(pr["url"])
                         if time.time() > timeout:
                             skip_pr = True
-                            print("Timeout expired, moving on...")
+                            logger.warning("Timeout expired, moving on...")
                             break
                         time.sleep(4)
 
                 if skip_pr:
-                    print(
-                        f"PR {pr['number']}: Timeout expired waiting for state to be green at step 2, skipping")
+                    logger.warning(
+                        f"PR {pr['number']}: Timeout expired waiting for state to be green at step 2, skipping"
+                    )
                     continue
 
             response = requests.post(
                 pr_url_4_comments,
                 json=comment_data,
                 headers=self.headers,
-                timeout=DEFAULT_TIMEOUT)
+                timeout=DEFAULT_TIMEOUT,
+            )
             if response.status_code != 201:
-                print(
-                    f"Failed to add comment to pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(
+                    f"Failed to add comment to pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}"
+                )
 
-            print(f"PR {pr['number']} Commented")
+            logger.info(f"PR {pr['number']} Commented")
 
-    def multi_comments_pull_req(self, pull_req: List[Dict[str, Any]], comment1: str, comment2: str) -> None:
+    def multi_comments_pull_req(
+        self, pull_req: List[Dict[str, Any]], comment1: str, comment2: str
+    ) -> None:
         """Append two comments to the PR.
 
         Args:
@@ -313,7 +765,9 @@ class GitHubClient:
         time.sleep(4)
         self.comment_pull_req(pull_req, comment2, update=False)
 
-    def set_label_to_pull_request(self, pull_req: List[Dict[str, Any]], label: str) -> None:
+    def set_label_to_pull_request(
+        self, pull_req: List[Dict[str, Any]], label: str
+    ) -> None:
         """Set a label to a PR.
 
         Args:
@@ -331,10 +785,11 @@ class GitHubClient:
             )
 
             if response.status_code != 200:
-                print(
-                    f"Failed to set label {label} to pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(
+                    f"Failed to set label {label} to pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}"
+                )
 
-            print(f"PR {pr['number']} Label set")
+            logger.info(f"PR {pr['number']} Label set")
 
     def close_pull_requests(self, pull_req_list: List[Dict[str, Any]]) -> None:
         """Close the specified pull requests.
@@ -344,7 +799,7 @@ class GitHubClient:
         """
         for pull_req in pull_req_list:
             url = pull_req["issue_url"]
-            print(url)
+            logger.debug(url)
             response = requests.patch(
                 url,
                 headers=self.headers,
@@ -352,9 +807,9 @@ class GitHubClient:
                 timeout=DEFAULT_TIMEOUT,
             )
             if response.status_code != 200:
-                print(f"Failed to close PR: {pull_req['title']}")
+                logger.error(f"Failed to close PR: {pull_req['title']}")
             else:
-                print(f"Closed PR: {pull_req['title']}")
+                logger.info(f"Closed PR: {pull_req['title']}")
 
     def merge_pull_req(self, pull_req: List[Dict[str, Any]]) -> None:
         """Merge pull requests.
@@ -369,38 +824,42 @@ class GitHubClient:
             skip_pr = False
 
             mergeable_state = self.get_mergeable_state(pr["url"])
-            print(f"\n*** PR {pr['number']} ***\n")
+            logger.info(f"*** PR {pr['number']} ***")
 
             # Setting a timer for the mergeable state
             timeout = time.time() + MERGEABLE_STATE_TIMEOUT
-            with self.console.status("[bold green]Waiting for mergeable state to return..."):
+            with self.console.status(
+                "[bold green]Waiting for mergeable state to return..."
+            ):
                 while mergeable_state == "unknown":
                     mergeable_state = self.get_mergeable_state(pr["url"])
                     if time.time() > timeout:
                         skip_pr = True
-                        print("Timeout expired, moving on...")
+                        logger.warning("Timeout expired, moving on...")
                         break
                     time.sleep(1)
 
             if skip_pr:
-                print(
-                    f"PR {pr['number']}: Timeout expired waiting for state to be green, skipping")
+                logger.warning(
+                    f"PR {pr['number']}: Timeout expired waiting for state to be green, skipping"
+                )
                 continue
 
             if mergeable_state == "behind":
-                print(f"PR {pr['number']} is behind, updating branch")
+                logger.info(f"PR {pr['number']} is behind, updating branch")
                 self.update_branch([pr])
 
             approval_status = self.is_approved(pr["url"])
             if not approval_status or approval_status == "Dismissed":
                 if approval_status == "Dismissed":
-                    print(
-                        f"PR {pr['number']} approval was dismissed/stale, re-approving...")
+                    logger.info(
+                        f"PR {pr['number']} approval was dismissed/stale, re-approving..."
+                    )
                 else:
-                    print(f"PR {pr['number']} Needs approving...")
+                    logger.info(f"PR {pr['number']} Needs approving...")
                 self.approve(pr["url"])
             else:
-                print(f"PR {pr['number']} Approved already")
+                logger.info(f"PR {pr['number']} Approved already")
 
             timeout = time.time() + MERGEABLE_STATE_TIMEOUT
             with self.console.status("[bold green]Waiting for checks to pass..."):
@@ -408,16 +867,17 @@ class GitHubClient:
                     mergeable_state = self.get_mergeable_state(pr["url"])
                     if time.time() > timeout:
                         skip_pr = True
-                        print("Timeout expired, moving on...")
+                        logger.warning("Timeout expired, moving on...")
                         break
                     time.sleep(1)
 
             if skip_pr:
-                print(
-                    f"PR {pr['number']}: Timeout expired waiting for state to be green, skipping")
+                logger.warning(
+                    f"PR {pr['number']}: Timeout expired waiting for state to be green, skipping"
+                )
                 continue
 
-            print(f"PR {pr['number']} merging now")
+            logger.info(f"PR {pr['number']} merging now")
             response = requests.put(
                 pr["url"] + "/merge",
                 headers=self.headers,
@@ -426,11 +886,12 @@ class GitHubClient:
             )
 
             if response.status_code != 200:
-                print(
-                    f"Failed to merge pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}")
+                logger.error(
+                    f"Failed to merge pull request {pr['number']} \n Status code: {response.status_code} \n Reason: {json.loads(response.text)}"
+                )
                 raise SystemExit(1)
 
-            print(f"PR {pr['number']} merged!")
+            logger.info(f"PR {pr['number']} merged!")
 
     def process_dismissed_prs(self, dismissed_prs: List[Dict[str, Any]]) -> None:
         """Process dismissed PRs by re-approving them and checking if they can be merged.
@@ -439,10 +900,10 @@ class GitHubClient:
             dismissed_prs: List of dismissed pull requests to process
         """
         for pr in dismissed_prs:
-            print(f"\n*** Processing dismissed PR {pr['number']} ***\n")
+            logger.info(f"*** Processing dismissed PR {pr['number']} ***")
 
             # Re-approve the PR
-            print(f"PR {pr['number']} was dismissed, re-approving...")
+            logger.info(f"PR {pr['number']} was dismissed, re-approving...")
             self.approve(pr["url"])
 
             # Check if it has no changes and can be merged
@@ -454,15 +915,91 @@ class GitHubClient:
 
             if last_comment and "body" in last_comment:
                 no_changes_pattern = re.compile(
-                    r"No changes. Your infrastructure matches the configuration|Apply complete!")
+                    r"No changes. Your infrastructure matches the configuration|Apply complete!"
+                )
                 if no_changes_pattern.search(last_comment["body"]):
-                    print(
-                        f"PR {pr['number']} has no changes after re-approval, merging...")
+                    logger.info(
+                        f"PR {pr['number']} has no changes after re-approval, merging..."
+                    )
                     self.merge_pull_req([pr])
                 else:
-                    print(f"PR {pr['number']} still has changes after re-approval, will be processed in next run.")
+                    logger.info(
+                        f"PR {pr['number']} still has changes after re-approval, will be processed in next run."
+                    )
             else:
-                print(f"PR {pr['number']} has no comments after re-approval, will be processed in next run.")
+                logger.info(
+                    f"PR {pr['number']} has no comments after re-approval, will be processed in next run."
+                )
+
+    def get_repository_info(self, repo_name: str) -> Dict[str, Any]:
+        """Get repository information including topics.
+
+        Args:
+            repo_name: Name of the repository
+
+        Returns:
+            Dictionary containing repository information including topics
+
+        Raises:
+            SystemExit: If API call fails
+        """
+        repo_url = f"{self.base_repos_url}{repo_name}"
+
+        logger.debug(f"Fetching repository info for {repo_name}")
+
+        response = requests.get(repo_url, headers=self.headers, timeout=DEFAULT_TIMEOUT)
+
+        if response.status_code != 200:
+            logger.error(
+                f"Failed to get repository info for {repo_name}. Status code: {response.status_code}"
+            )
+            raise SystemExit(1)
+
+        return json.loads(response.text)
+
+    def is_ai_disabled_for_repo(self, repo_name: str) -> bool:
+        """Check if AI analysis is disabled for a repository.
+
+        Args:
+            repo_name: Name of the repository
+
+        Returns:
+            True if AI is disabled for this repository, False otherwise
+        """
+        try:
+            from .utils import AI_DISABLE_KEYWORD
+        except ImportError:
+            from utils import AI_DISABLE_KEYWORD
+
+        try:
+            repo_info = self.get_repository_info(repo_name)
+            topics = repo_info.get("topics", [])
+
+            is_disabled = AI_DISABLE_KEYWORD in topics
+
+            if is_disabled:
+                logger.info(
+                    f"AI analysis disabled for repository {repo_name} (found topic: {AI_DISABLE_KEYWORD})"
+                )
+            else:
+                logger.debug(
+                    f"AI analysis enabled for repository {repo_name} (topics: {topics})"
+                )
+
+            return is_disabled
+
+        except SystemExit:
+            # get_repository_info raises SystemExit on API failure
+            logger.error(
+                f"Failed to get repository info for {repo_name}, defaulting to AI enabled"
+            )
+            return False
+        except Exception as e:
+            logger.error(
+                f"Error checking AI disable status for repository {repo_name}: {e}"
+            )
+            # Default to enabled if we can't check
+            return False
 
     def approve_all_prs(self, all_pulls: List[Dict[str, Any]]) -> None:
         """Approve all not approved PRs matching the filters from the config.
@@ -477,6 +1014,6 @@ class GitHubClient:
                 approved = True
 
         if approved:
-            print("All completed")
+            logger.info("All completed")
         else:
-            print("Nothing to be approved")
+            logger.info("Nothing to be approved")
